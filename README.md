@@ -1,2 +1,4 @@
-# DataFrameIntervals.jl
-Utilities for working with DataFrames of `Intervals.jl` or `TimeSpans.jl` objects.
+# DataFrameIntervals
+
+[![Build Status](https://github.com/haberdashpi/DataFrameIntervals.jl/actions/workflows/CI.yml/badge.svg?branch=)](https://github.com/haberdashpi/DataFrameIntervals.jl/actions/workflows/CI.yml?query=branch%3A)
+[![Coverage](https://codecov.io/gh/haberdashpi/DataFrameIntervals.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/haberdashpi/DataFrameIntervals.jl)
