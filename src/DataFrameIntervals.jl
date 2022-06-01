@@ -1,13 +1,16 @@
 module DataFrameIntervals
 
-using Intervals, DataFrames, Requires
+using Intervals, DataFrames, Requires, Dates
+export quantile_windows, split_into, split_into_combine
+
+using Infiltrator
 
 #####
 ##### Support `find_intersection` and `intersect` over `Interval` and `TimeSpan` objects.
 #####
 
 function find_intersections_(x::AbstractVector, y::AbstractVector) 
-    find_intersections(IntervalArray(x), IntervalArray(y))
+    Intervals.find_intersections(IntervalArray(x), IntervalArray(y))
 end
 intersect_(x, y) = backto(x, intersect(interval(x), interval(y)))
 
@@ -27,8 +30,9 @@ backto(::Interval, x) = x
 
 # support for `TimeSpan` vectors
 function __init__()
-    @requires TimeSpans = "bb34ddd2-327f-4c4a-bfb0-c98fc494ece1" begin
-        interval(x::TimesSpans.TimeSpan) = Interval{Nanosecond, Closed, Open}(x.start, x.stop)
+    @require TimeSpans = "bb34ddd2-327f-4c4a-bfb0-c98fc494ece1" begin
+        using .TimeSpans
+        interval(x::TimeSpan) = Interval{Nanosecond, Closed, Open}(x.start, x.stop)
         backto(::TimeSpan, x::Interval{Nanosecond, Closed, Open}) = TimeSpan(first(x), last(x))
         function IntervalArray(x::AbstractVector{<:TimeSpan})
             IntervalArray{typeof(x), Interval{Nanosecond, Closed, Open}}(x)
@@ -113,35 +117,53 @@ label_helper(x::Pair) = first(x)
 value_helper(x::Pair, _) = last(x)
 
 
-function intervals(steps)
+function intervals(steps, el)
     return map(steps[1:end-1], steps[2:end]) do start, stop
-        return Interval{eltype(steps), Closed, Open}(start, stop)
+        return backto(el, Interval{eltype(steps), Closed, Open}(start, stop))
     end
 end
-toval(x) = float(Dates.value(convert(Nanosecond, x)))
-fromval(x) = Nanosecond(round(Int, x, RoundDown))
-range_(a::TimePeriod, b::TimePeriod; length) = map(fromval, range(toval(a), toval(b); length))
+toval(x::TimePeriod) = float(Dates.value(convert(Nanosecond, x)))
+toperiod(x::Real) = Nanosecond(round(Int, x, RoundDown))
+range_(a::TimePeriod, b::TimePeriod; length) = map(toperiod, range(toval(a), toval(b); length))
 range_(a, b; length) = range(a, b; length)
 
 """
-    quantile_windows(n, span; label=:count => 1:n, min_duration = 0.75*Intervals.span(span)/n)
+    quantile_windows(n, span; spancol=:span, label=:count => 1:n, min_duration = 0.75*Intervals.span(span)/n)
 
-Generate a data frame with `n` rows that divide `span` into equally spaced
+Generate a data frame with `n` rows that divide the interval `span` into equally spaced
 intervals. The output is a DataFrame with a `:span` column and a column of name `label` with
 the index for the span (== 1:n). The label argument can also be a pair in which case it
 should be a symbol paired with an iterable of `n` items to assign as the value of the given
 column.
 
+The value `span` can also be a dataframe, in which case quantiles that cover the entire
+range of time spans in the dataframe are used.
+
 The output is useful as the right argument to `split_into` and `split_into_combine`.
 """
-function quantile_windows(n, span; label=:index, min_duration=nothing)
-    ismissing(span) && return missing
-    min_duration = isnothing(min_duration) ? round(Int, 0.75duration, RoundUp) : min_duration
+function quantile_windows(n, span_; spancol=:span, label=:index, min_duration=nothing)
+    ismissing(span_) && return missing
 
-    span = interval(span)
-    splits = intervals(range_(a, b; length=length+1))
-    df = DataFrame(span = splits; (label_helper(label) => value_helper(label, n),)...)
+    span = interval(span_)
+    splits = intervals(range_(first(span), last(span); length=n+1), span_)
+    min_duration = if isnothing(min_duration) 
+        toperiod(0.75*toval(Intervals.span(interval(first(splits)))))
+    else
+        min_duration
+    end
+    df = DataFrame(;(spancol => splits, label_helper(label) => value_helper(label, n))...)
     return df
 end
-
+function quantile_windows(n, span::DataFrame; spancol=:span, kwds...) 
+    return quantile_windows(n, dfspan(span, spancol); spancol, kwds...)
 end
+
+function dfspan(df, spancol) 
+    if nrow(df) == 0
+        return missing
+    else
+        return backto(first(df[!, spancol]), superset(IntervalArray(df[!, spancol])))
+    end
+end
+
+end # module
