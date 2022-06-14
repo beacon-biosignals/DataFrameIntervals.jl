@@ -43,7 +43,7 @@ end
 """
     split_into(left, right; spancol=:span)
 
-    Given two data frames, where rows represent some span of time (specified by `spancol`),
+    Given two data frames, where rows represent some series of intervals (typically time spans),
 split the intervals in `left` by the intervals in `right`. For example, you could split the
 times over which your lights are on in your house (left dataframe) into the preiods of night
 and day defined by sunrise and sunset for each day.
@@ -66,7 +66,7 @@ function split_into(left, right; spancol=:span)
     left_side, right_side = split(regions, left, right)
     joined = hcat(view(right_side, :, Not(spancol)),
                   view(left_side, :, Not(spancol)))
-    spans_for_split!(joined, view(right_side, :, spancol), view(left_side, :, spancol))
+    spans_for_split!(joined, view(left_side, :, spancol), view(right_side, :, spancol))
     return joined
 end
 
@@ -86,13 +86,49 @@ function spans_for_split!(df, left_span, right_span)
     return df
 end
 
+# helpers to handle grouping DataFrames
+struct Unused
+    name::String
+end
+Base.string(x::Unused) = x.name
+spancol_error(spancol) = error("Column $spancol cannot be used for grouping during a call to `split_into_combine`.")
+function check_spancol(spancol, names)
+    spancol ∈ names && spancol_error(spancol)
+    return names
+end
+function valid_columns(spancol, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
+    error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
+end
+function valid_columns(spancol, df, col::Union{<:AbstractString, Symbol}) 
+    col = string(col)
+    return col ∈ names(df) ? check_spancol(spancol, Union{String, Unused}[col]) : Union{String, Unused}[Unused(col)]
+end
+function valid_columns(spancol, df, cols::Not)
+    valids = in.(string.(cols.skip), Ref(names(df)))
+    check_spancol(spancol, names(df, Not(cols.skip[valids])))
+end
+function valid_columns(spancol, df, cols::Not{<:Union{Symbol, <:AbstractString}})
+    if in(string(cols.skip), names(df))
+        check_spancol(spancol, names(df, cols))
+    else
+        Union{}[]
+    end
+end
+valid_columns(spancol, df, cols::All) = spancol_error(spancol)
+valid_columns(spancol, df, cols::Colon) = spancol_error(spancol)
+valid_columns(spancol, df, cols::Cols{<:Tuple{<:Function}}) = check_spancol(spancol, names(df, cols))
+valid_columns(spancol, df, cols::Cols) = union(valid_columns.(spancol, Ref(df), cols.cols)...)
+valid_columns(spancol, df, cols::Regex) = check_spancol(spancol, names(df, cols))
+valid_columns(spancol, df, cols::Between) = check_spancol(spancol, names(df, cols))
+valid_columns(spancol, df, cols) = mapreduce(c -> valid_columns(spancol, df, c), vcat, cols)
+
 # helper for `split_into_combine`
 const PairLike = Union{AbstractVector{<:Pair}, <:Pair}
-combine_view(df::AbstractDataFrame, pairs::PairLike...) = (span, indices) -> combine_view(span, indices, df, pairs...)
-function combine_view(span::AbstractVector, indices::AbstractVector, df::AbstractDataFrame, pairs::PairLike...)
+combine_view(df, groups, pairs...) = (span, indices) -> _combine_view(span, indices, df, groups, pairs...)
+function _combine_view(span, indices, df, groups, pairs...)
     df, span = split(indices, df, span)
     df = spans_for_split!(copy(df), df.span, vec(span))
-    combine(df, pairs...)
+    combine(groupby(df, groups), pairs...)
 end
 
 """
@@ -105,10 +141,29 @@ the only column from `right` that `pairs` can reference is `:right_span`.
 function split_into_combine(left, right, groups, pairs...; spancol=:span, kwds...)
     regions = find_intersections_(view(right, :, spancol), view(left, :, spancol))
     right = insertcols!(DataFrame(right, copycols=false), :left_index => regions)
-    grouped = groupby(right, groups)
-    return combine(grouped,
-                   [spancol, :left_index] => combine_view(left, pairs...) => AsTable;
-                   kwds...)
+    
+    # the groupings passed apply to both left and right data frames but we need to groupby
+    # *befure* we combine them so we need our own methods to figure out which columns belong
+    # to which dataframe; this is all complicated by the fact that columns 
+    # can be specified in a variety of different ways: e.g. Not(:span).
+
+    right_groups = valid_columns(spancol, right, groups)
+    left_groups = valid_columns(spancol, left, groups)
+
+    right_used = filter(x -> x isa String, right_groups)
+    right_unused = filter(x -> x isa Unused, right_groups)
+    left_used = filter(x -> x isa String, left_groups)
+    left_unused = filter(x -> x isa Unused, left_groups)
+    
+    unused = intersect(right_unused, left_unused)
+    if !isempty(unused)
+        error("Columns do not exist: "*join(string.(unused), ", ", " and "))
+    end
+    grouped = groupby(right, right_used)
+    
+    return select(combine(grouped,
+                   [spancol, :left_index] => combine_view(left, left_used, pairs...) => AsTable;
+                   kwds...), Not(:left_index))
 end
 
 label_helper(x::Symbol) = x
