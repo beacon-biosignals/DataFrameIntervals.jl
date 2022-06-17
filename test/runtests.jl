@@ -55,10 +55,12 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test_throws ErrorException split_into_combine(df2, quarters, [:i_dont_exist], :x => mean)
     @test_throws ErrorException split_into_combine(df2, quarters, Cols(1:2), :x => mean)
 
-    Aqua.test_all(DataFrameIntervals; 
-                  project_extras=false,
-                  stale_deps=true,
-                  deps_compat=true,
-                  project_toml_formatting=true,
-                  ambiguities=false)
+    @testset "Code Quality" begin
+        Aqua.test_all(DataFrameIntervals; 
+                    project_extras=true,
+                    stale_deps=true,
+                    deps_compat=true,
+                    project_toml_formatting=true,
+                    ambiguities=false)
+    end
 end
