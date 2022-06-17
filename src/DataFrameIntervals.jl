@@ -96,6 +96,11 @@ function check_spancol(spancol, names)
     string(spancol) ∈ names && spancol_error(spancol)
     return names
 end
+
+# `valid_columns`: returns a list of all columns from a `DataFrames` column selector that
+# are valid when making a call to `split_into_combine`. This has to check that `spancol` is
+# not included (since we cannot group by the time span column we're using to compute joins
+# Any explicitly specified columns that are not valid are returned as `Unused` objects.
 function valid_columns(spancol, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
     error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
 end
