@@ -5,8 +5,7 @@ DocMeta.setdocmeta!(DataFrameIntervals, :DocTestSetup, :(using DataFrameInterval
 
 makedocs(;
     modules=[DataFrameIntervals],
-    authors="David F Little <david.frank.little@gmail.com> and contributors",
-    repo="https://github.com/haberdashpi/DataFrameIntervals.jl/blob/{commit}{path}#{line}",
+    repo="https://github.com/beacon-biosignals/DataFrameIntervals.jl/blob/{commit}{path}#{line}",
     sitename="DataFrameIntervals.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
