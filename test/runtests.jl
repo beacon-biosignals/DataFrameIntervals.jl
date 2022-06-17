@@ -44,12 +44,14 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     df_combined = split_into_combine(df1, quarters, Cols(:quarter, r"lab"), :x => mean)
     df_combined = split_into_combine(df1, quarters, Not([:span, :x]), :x => mean)
     err = ErrorException("Column span cannot be used for grouping during a call to `split_into_combine`.")
-    @test_throws err split_into_combine(df1, quarters, All())
+    @test_throws err split_into_combine(df1, quarters, All(), :x => mean)
     # TODO: resolve this error
-    @test_throws err split_into_combine(df1, quarters, Cols(:))
+    @test_throws err split_into_combine(df1, quarters, Cols(:), :x => mean)
 
     df2 = DataFrame(label = rand(('a':'d'), n), sublabel = rand(('k':'n'), n), x = rand(n), span = spans)
-    @test split_into_combine(df2, quarters, Cols(Between(:label, :sublabel), :quarter), :x => mean)
+    df2_split = split_into_combine(df2, quarters, Cols(Between(:label, :sublabel), :quarter), :x => mean)
+    df2_manual = combine(groupby(split_into(df2, quarters), Cols(Between(:label, :sublabel), :quarter)), :x => mean)
+    @test df2_split.x_mean == df2_manual.x_mean
     @test_throws ErrorException split_into_combine(df2, quarters, [:i_dont_exist], :x => mean)
     @test_throws ErrorException split_into_combine(df2, quarters, Cols(1:2), :x => mean)
 

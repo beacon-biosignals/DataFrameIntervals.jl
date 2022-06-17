@@ -93,7 +93,7 @@ end
 Base.string(x::Unused) = x.name
 spancol_error(spancol) = error("Column $spancol cannot be used for grouping during a call to `split_into_combine`.")
 function check_spancol(spancol, names)
-    spancol ∈ names && spancol_error(spancol)
+    string(spancol) ∈ names && spancol_error(spancol)
     return names
 end
 function valid_columns(spancol, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
@@ -111,15 +111,26 @@ function valid_columns(spancol, df, cols::Not{<:Union{Symbol, <:AbstractString}}
     if in(string(cols.skip), names(df))
         check_spancol(spancol, names(df, cols))
     else
-        Union{}[]
+        check_spancol(spancol, names(df))
     end
 end
 valid_columns(spancol, df, cols::All) = spancol_error(spancol)
 valid_columns(spancol, df, cols::Colon) = spancol_error(spancol)
-valid_columns(spancol, df, cols::Cols{<:Tuple{<:Function}}) = check_spancol(spancol, names(df, cols))
-valid_columns(spancol, df, cols::Cols) = union(valid_columns.(spancol, Ref(df), cols.cols)...)
+function valid_columns(spancol, df, cols::Cols{<:Tuple{<:Function}})
+    check_spancol(spancol, names(df, cols))
+end
+function valid_columns(spancol, df, cols::Cols)
+    check_spancol(spancol, union(valid_columns.(spancol, Ref(df), cols.cols)...))
+end
 valid_columns(spancol, df, cols::Regex) = check_spancol(spancol, names(df, cols))
-valid_columns(spancol, df, cols::Between) = check_spancol(spancol, names(df, cols))
+function valid_columns(spancol, df, cols::Between)
+    first_last = [valid_columns(spancol, df, cols.first); valid_columns(spancol, df, cols.last)]
+    if all(x -> x isa String, first_last)
+        check_spancol(spancol, names(df, cols))
+    else
+        return filter(x -> x isa Unused, first_last)
+    end
+end
 valid_columns(spancol, df, cols) = mapreduce(c -> valid_columns(spancol, df, c), vcat, cols)
 
 # helper for `split_into_combine`
@@ -128,7 +139,7 @@ combine_view(df, groups, pairs...) = (span, indices) -> _combine_view(span, indi
 function _combine_view(span, indices, df, groups, pairs...)
     df, span = split(indices, df, span)
     df = spans_for_split!(copy(df), df.span, vec(span))
-    combine(groupby(df, groups), pairs...)
+    return combine(groupby(df, groups), pairs...)
 end
 
 """
@@ -161,9 +172,14 @@ function split_into_combine(left, right, groups, pairs...; spancol=:span, kwds..
     end
     grouped = groupby(right, right_used)
     
-    return select(combine(grouped,
-                   [spancol, :left_index] => combine_view(left, left_used, pairs...) => AsTable;
-                   kwds...), Not(:left_index))
+    result = combine(grouped,
+                     [spancol, :left_index] => combine_view(left, left_used, pairs...) => AsTable;
+                     kwds...)
+    if :left_index ∈ propertynames(result)
+        return select(result, Not(:left_index))
+    else
+        return result
+    end
 end
 
 label_helper(x::Symbol) = x
