@@ -26,7 +26,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
 
     # NOTE: the bulk of the correctness testing for interval intersections
     # has already been handled by `Intervals.find_intervals`
-    df_result = split_into(df1, quarters)
+    df_result = interval_join(df1, quarters)
     for quarter in groupby(df_result, :right_span)
         @test sum(duration, quarter.span) ≤ duration(quarter.right_span[1])
     end
@@ -36,7 +36,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     
     # split_into_combine equivalence
     df_combined = split_into_combine(df1, quarters, [:quarter, :label], :x => mean)
-    df_manual_combined = combine(groupby(split_into(df1, quarters), [:quarter, :label]), :x => mean)
+    df_manual_combined = combine(groupby(interval_join(df1, quarters), [:quarter, :label]), :x => mean)
     @test df_combined.x_mean == df_manual_combined.x_mean
 
     # test out various column specifiers
@@ -50,7 +50,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
 
     df2 = DataFrame(label = rand(('a':'d'), n), sublabel = rand(('k':'n'), n), x = rand(n), span = spans)
     df2_split = split_into_combine(df2, quarters, Cols(Between(:label, :sublabel), :quarter), :x => mean)
-    df2_manual = combine(groupby(split_into(df2, quarters), Cols(Between(:label, :sublabel), :quarter)), :x => mean)
+    df2_manual = combine(groupby(interval_join(df2, quarters), Cols(Between(:label, :sublabel), :quarter)), :x => mean)
     @test df2_split.x_mean == df2_manual.x_mean
     @test_throws ErrorException split_into_combine(df2, quarters, [:i_dont_exist], :x => mean)
     @test_throws ErrorException split_into_combine(df2, quarters, Cols(1:2), :x => mean)

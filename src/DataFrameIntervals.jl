@@ -14,8 +14,9 @@ function find_intersections_(x::AbstractVector, y::AbstractVector)
 end
 intersect_(x, y) = backto(x, intersect(interval(x), interval(y)))
 
-# IntervalArray is a helper that treats any vector of interval-like objects as an array
-# of `Interval` objects.
+# IntervalArray is a helper that treats any vector of interval-like objects as an array of
+# `Interval` objects. For now this includes only `TimeSpans` (though there are several other
+# pacakges that could be supported in theory, e.g. the interval object from AxisArrays)
 struct IntervalArray{A, I} <: AbstractVector{I}
     val::A
 end
@@ -40,37 +41,67 @@ function __init__()
     end
 end
 
+onleft(x) = x
+onright(x) = x
+onleft(x::Pair) = first(x)
+onright(x::Pair) = last(x)
+
 """
-    split_into(left, right; spancol=:span)
+    interval_join(left, right; on, renamecols=identity => identity, 
+                  renameon=:_left => :_right, makeunique=false)
 
-    Given two data frames, where rows represent some series of intervals (typically time spans),
-split the intervals in `left` by the intervals in `right`. For example, you could split the
-times over which your lights are on in your house (left dataframe) into the preiods of night
-and day defined by sunrise and sunset for each day.
+Join two dataframes based on the intervals they represent (denoted by the `on` column);
+these are typically intervals of time. The join includes one row for every pair of rows in
+`left` and `right` whose intervals overlap (i.e. `!isempty(intersect(left.on, right.on))`).
 
-In effect, this implements join over left and right, where rows match when the spans
-intersect.
+- `on`: The column name to join left and right on. If the column on which left and right
+  will be joined have different names, then a left=>right pair can be passed. on is a
+  required argument. The value of the on in the output data frame is the intersection of the
+  left and right interval.
 
-In detail: each row of left becomes a set of rows. Each such row is the intersection between
-the span of this left row with a span from the right row. That row has the column values for
-both left and right. 
+- `makeunique`: if false (the default), an error will be raised if duplicate names are found
+  in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
+  1 for the first duplicate).
 
-Three new columns are defined in the output:
+- `renamecols`: a Pair specifying how columns of left and right data frames should be
+  renamed in the resulting data frame. Each element of the pair can be a string or a Symbol
+  can be passed in which case it is appended to the original column name; alternatively a
+  function can be passed in which case it is applied to each column name, which is passed to
+  it as a String. Note that renamecols does not affect on columns.
 
-- :left_span - reports span of left joined row
-- :right_span - reports span of right joined row
-- :span - the intersection of the left and right span
+- `renameon`: a Pair specifying how the left and right data frame `on` column is renamed and
+   stored in the resulting data frame, following the same format as `renamecols`.
+
 """
-function split_into(left, right; spancol=:span)
-    regions = find_intersections_(view(right, :, spancol), view(left, :, spancol))
-    left_side, right_side = split(regions, left, right)
-    joined = hcat(view(right_side, :, Not(spancol)),
-                  view(left_side, :, Not(spancol)))
-    spans_for_split!(joined, view(left_side, :, spancol), view(right_side, :, spancol))
+function interval_innerjoin(left, right; on, renamecols=identity => identity, 
+                            renameon=:_left => :_right, makeunique=false)
+    regions = find_intersections_(view(right, :, onright(on)), view(left, :, onleft(on)))
+    if !(on isa Symbol || on isa AbstractString)
+        error("Interval joins support only one `on` column; iterables are not allowed.")
+    end
+
+    left_side, right_side = join_indices(regions, left, right)
+    rename!(left, (renamer(n, onleft(renamecols), onleft(on), onleft(renameon)) 
+                 for n in names(left))...)
+    rename!(right, (renamer(n, onright(renamecols), onright(on), onright(renameon)) 
+                 for n in names(right))...)
+    # TODO: we need the renamed on column
+    if string(onleft(on)) ∈ names(left) || string(onleft(on)) ∈ names(right)
+        error("`interval_innerjoin` requires that you give a new name to the `on` column using 
+               `renameon`.")
+    end
+    joined = hcat(right_side, left_side; makeunique)
+    transform!(df, [onleft(on), onright(on)] => ByRow(intersect_) => onleft(on))
+    add_ons!(joined, on, view(left_side, :, on), view(right_side, :, on), renameon)
     return joined
 end
-
-function split(regions, left, right)
+function renamer(n, renamecols, on, renameon)
+    return n == string(on) ? n => renamer(n, renameon) : n => renamer(n, renamecols)
+end
+renamer(col, suffix::Union{Symbol, AbstractString}) = string(col, suffix)
+renamer(col, fn) = fn(col)
+    
+function join_indices(regions, left, right)
     ixs = map(enumerate(regions)) do (right_i, left_ixs)
         return (fill(right_i, length(left_ixs)), left_ixs)
     end
@@ -79,64 +110,57 @@ function split(regions, left, right)
     return left_side, right_side
 end
 
-function spans_for_split!(df, left_span, right_span)
-    df[!, :left_span] = left_span
-    df[!, :right_span] = right_span
-    transform!(df, [:left_span, :right_span] => ByRow(intersect_) => :span)
-    return df
-end
-
 # helpers to handle grouping DataFrames
-struct Unused
+struct Invalid
     name::String
 end
-Base.string(x::Unused) = x.name
+Base.string(x::Invalid) = x.name
 spancol_error(spancol) = error("Column $spancol cannot be used for grouping during a call to `split_into_combine`.")
 function check_spancol(spancol, names)
     string(spancol) ∈ names && spancol_error(spancol)
     return names
 end
 
-# `valid_columns`: returns a list of all columns from a `DataFrames` column selector that
+# `find_valid`: returns a list of all columns from a `DataFrames` column selector that
 # are valid when making a call to `split_into_combine`. This has to check that `spancol` is
 # not included (since we cannot group by the time span column we're using to compute joins
-# Any explicitly specified columns that are not valid are returned as `Unused` objects.
-function valid_columns(spancol, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
+# Any explicitly specified columns that are not valid are returned as `Invalid` objects.
+function find_valid(on, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
     error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
 end
-function valid_columns(spancol, df, col::Union{<:AbstractString, Symbol}) 
+function find_valid(on, df, col::Union{<:AbstractString, Symbol}) 
     col = string(col)
-    return col ∈ names(df) ? check_spancol(spancol, Union{String, Unused}[col]) : Union{String, Unused}[Unused(col)]
+    return col ∈ names(df) ? check_on(on, Union{String, Invalid}[col]) : Union{String, Invalid}[Invalid(col)]
 end
-function valid_columns(spancol, df, cols::Not)
+function find_valid(on, df, cols::Not)
     valids = in.(string.(cols.skip), Ref(names(df)))
-    check_spancol(spancol, names(df, Not(cols.skip[valids])))
+    check_on(on, names(df, Not(cols.skip[valids])))
 end
-function valid_columns(spancol, df, cols::Not{<:Union{Symbol, <:AbstractString}})
+function find_valid(on, df, cols::Not{<:Union{Symbol, <:AbstractString}})
     if in(string(cols.skip), names(df))
-        check_spancol(spancol, names(df, cols))
+        check_on(on, names(df, cols))
     else
-        check_spancol(spancol, names(df))
+        check_on(on, names(df))
     end
 end
-valid_columns(spancol, df, cols::All) = spancol_error(spancol)
-valid_columns(spancol, df, cols::Colon) = spancol_error(spancol)
-function valid_columns(spancol, df, cols::Cols{<:Tuple{<:Function}})
-    check_spancol(spancol, names(df, cols))
+find_valid(on, df, cols::All) = on_error(on)
+find_valid(on, df, cols::Colon) = on_error(on)
+function find_valid(on, df, cols::Cols{<:Tuple{<:Function}})
+    check_on(on, names(df, cols))
 end
-function valid_columns(spancol, df, cols::Cols)
-    check_spancol(spancol, union(valid_columns.(spancol, Ref(df), cols.cols)...))
+function find_valid(on, df, cols::Cols)
+    check_on(on, union(find_valid.(on, Ref(df), cols.cols)...))
 end
-valid_columns(spancol, df, cols::Regex) = check_spancol(spancol, names(df, cols))
-function valid_columns(spancol, df, cols::Between)
-    first_last = [valid_columns(spancol, df, cols.first); valid_columns(spancol, df, cols.last)]
+find_valid(on, df, cols::Regex) = check_on(on, names(df, cols))
+function find_valid(on, df, cols::Between)
+    first_last = [find_valid(on, df, cols.first); find_valid(on, df, cols.last)]
     if all(x -> x isa String, first_last)
-        check_spancol(spancol, names(df, cols))
+        check_on(on, names(df, cols))
     else
-        return filter(x -> x isa Unused, first_last)
+        return filter(x -> x isa Invalid, first_last)
     end
 end
-valid_columns(spancol, df, cols) = mapreduce(c -> valid_columns(spancol, df, c), vcat, cols)
+find_valid(on, df, cols) = mapreduce(c -> find_valid(on, df, c), vcat, cols)
 
 # helper for `split_into_combine`
 const PairLike = Union{AbstractVector{<:Pair}, <:Pair}
@@ -148,14 +172,14 @@ function _combine_view(span, indices, df, groups, pairs...)
 end
 
 """
-    split_into_combine(left, right, groups, pairs...; spancol=:span)
+    combine_interval_join(left, right, groups, pairs...; on=:span)
 
     Equivalent to, but less resource intensive than 
 `combine(groupby(split_into(left, right), groups), pairs...)`. The one caveat is that
-the only column from `right` that `pairs` can reference is `:right_span`.
+the only column from `right` that `pairs` can reference is the `on` column.
 """
-function split_into_combine(left, right, groups, pairs...; spancol=:span, kwds...)
-    regions = find_intersections_(view(right, :, spancol), view(left, :, spancol))
+function combine_interval_join(left, right, groups, pairs...; on=:span, kwds...)
+    regions = find_intersections_(view(right, :, on), view(left, :, on))
     right = insertcols!(DataFrame(right, copycols=false), :left_index => regions)
     
     # the groupings passed apply to both left and right data frames but we need to groupby
@@ -163,22 +187,22 @@ function split_into_combine(left, right, groups, pairs...; spancol=:span, kwds..
     # to which dataframe; this is all complicated by the fact that columns 
     # can be specified in a variety of different ways: e.g. Not(:span).
 
-    right_groups = valid_columns(spancol, right, groups)
-    left_groups = valid_columns(spancol, left, groups)
+    right_groups = find_valid(on, right, groups)
+    left_groups = find_valid(on, left, groups)
 
-    right_used = filter(x -> x isa String, right_groups)
-    right_unused = filter(x -> x isa Unused, right_groups)
-    left_used = filter(x -> x isa String, left_groups)
-    left_unused = filter(x -> x isa Unused, left_groups)
+    right_cols = filter(x -> x isa String, right_groups)
+    right_invalid = filter(x -> x isa Invalid, right_groups)
+    left_cols = filter(x -> x isa String, left_groups)
+    left_invalid = filter(x -> x isa Invalid, left_groups)
     
-    unused = intersect(right_unused, left_unused)
-    if !isempty(unused)
-        error("Columns do not exist: "*join(string.(unused), ", ", " and "))
+    invalid = intersect(right_invalid, left_invalid)
+    if !isempty(invalid)
+        error("Columns do not exist: "*join(string.(invalid), ", ", " and "))
     end
-    grouped = groupby(right, right_used)
+    grouped = groupby(right, right_cols)
     
     result = combine(grouped,
-                     [spancol, :left_index] => combine_view(left, left_used, pairs...) => AsTable;
+                     [on, :left_index] => combine_view(left, left_cols, pairs...) => AsTable;
                      kwds...)
     if :left_index ∈ propertynames(result)
         return select(result, Not(:left_index))
