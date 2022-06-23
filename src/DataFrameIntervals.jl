@@ -1,9 +1,7 @@
 module DataFrameIntervals
 
 using Intervals, DataFrames, Requires, Dates
-export quantile_windows, split_into, split_into_combine
-
-using Infiltrator
+export quantile_windows, interval_join, groupby_interval_join
 
 #####
 ##### Support `find_intersection` and `intersect` over `Interval` and `TimeSpan` objects.
@@ -52,19 +50,19 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
         error("Interval joins support only one `on` column; iterables are not allowed.")
     end
 
-    left_on = rename(forleft(on), forleft(renameon))
-    right_on = rename(forright(on), forright)
+    left_on = renamer(forleft(on), forleft(renameon))
+    right_on = renamer(forright(on), forright(renameon))
     joined_on = forleft(on)
     rename!(left, (renamer(n, forleft(renamecols), forleft(on), forleft(renameon)) 
                     for n in names(left))...)
     rename!(right, (renamer(n, forright(renamecols), forright(on), forright(renameon)) 
                     for n in names(right))...)
-    if string(left_on) ∈ joined_on
+    if string(left_on) == string(joined_on)
         error("Interval join failed: left dataframe's `on` column has the final name ",
                 "`$left_on` which clashes with joined dataframe's `on` column name ",
                 "`$joined_on`. Make sure `renameon` is set properly.")
     end
-    if string(right_on) ∈ joined_on
+    if string(right_on) == string(joined_on)
         error("Interval join failed: right dataframe's `on` column has the final name ",
                 "`$right_on` which clashes with joined dataframe's `on` column name ",
                 "`$joined_on`. Make sure `renameon` is set properly.")
@@ -100,7 +98,7 @@ these are typically intervals of time. The join includes one row for every pair 
    stored in the resulting data frame, following the same format as `renamecols`.
 
 """
-function interval_innerjoin(left, right; makeunique=false, kwds...)
+function interval_join(left, right; makeunique=false, kwds...)
     left = DataFrame(left, copycols=false)
     right = DataFrame(right, copycols=false)
     (;left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
@@ -133,9 +131,9 @@ struct Invalid
     name::String
 end
 Base.string(x::Invalid) = x.name
-spancol_error(spancol) = error("Column $spancol cannot be used for grouping during a call to `split_into_combine`.")
-function check_spancol(spancol, names)
-    string(spancol) ∈ names && spancol_error(spancol)
+oncol_error(on) = error("Column $on cannot be used for grouping during a call to `split_into_combine`.")
+function check_oncol(on, names)
+    string(on) ∈ names && oncol_error(on)
     return names
 end
 
@@ -148,32 +146,32 @@ function find_valid(on, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:
 end
 function find_valid(on, df, col::Union{<:AbstractString, Symbol}) 
     col = string(col)
-    return col ∈ names(df) ? check_on(on, Union{String, Invalid}[col]) : Union{String, Invalid}[Invalid(col)]
+    return col ∈ names(df) ? check_oncol(on, Union{String, Invalid}[col]) : Union{String, Invalid}[Invalid(col)]
 end
 function find_valid(on, df, cols::Not)
     valids = in.(string.(cols.skip), Ref(names(df)))
-    check_on(on, names(df, Not(cols.skip[valids])))
+    check_oncol(on, names(df, Not(cols.skip[valids])))
 end
 function find_valid(on, df, cols::Not{<:Union{Symbol, <:AbstractString}})
     if in(string(cols.skip), names(df))
-        check_on(on, names(df, cols))
+        check_oncol(on, names(df, cols))
     else
-        check_on(on, names(df))
+        check_oncol(on, names(df))
     end
 end
-find_valid(on, df, cols::All) = on_error(on)
-find_valid(on, df, cols::Colon) = on_error(on)
+find_valid(on, df, cols::All) = oncol_error(on)
+find_valid(on, df, cols::Colon) = oncol_error(on)
 function find_valid(on, df, cols::Cols{<:Tuple{<:Function}})
-    check_on(on, names(df, cols))
+    check_oncol(on, names(df, cols))
 end
 function find_valid(on, df, cols::Cols)
-    check_on(on, union(find_valid.(on, Ref(df), cols.cols)...))
+    check_oncol(on, union(find_valid.(on, Ref(df), cols.cols)...))
 end
-find_valid(on, df, cols::Regex) = check_on(on, names(df, cols))
+find_valid(on, df, cols::Regex) = check_oncol(on, names(df, cols))
 function find_valid(on, df, cols::Between)
     first_last = [find_valid(on, df, cols.first); find_valid(on, df, cols.last)]
     if all(x -> x isa String, first_last)
-        check_on(on, names(df, cols))
+        check_oncol(on, names(df, cols))
     else
         return filter(x -> x isa Invalid, first_last)
     end
@@ -231,16 +229,27 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
 
     # a lazy instantiation of the joined dataframe
     return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique, 
-                               left_index, left_on, right_on, joined_on)
+                               Symbol(left_index), Symbol(left_on), Symbol(right_on), 
+                               Symbol(joined_on))
 end
 
-function Base.iterate(x::GroupedIntervalJoin)
-    mapped = Iterators.map(x.right_grouped) do gdf
-        return groupby(select!(joingroup(gdf, x), Not(grouped.left_index)), 
+function Base.iterate(grouped::GroupedIntervalJoin)
+    mapped = Iterators.map(grouped.right_grouped) do gdf
+        return groupby(select!(joingroup(gdf, grouped), Not(grouped.left_index)), 
                        grouped.left_groups)
     end
+    iterable = Iterators.flatten(mapped)
 
-    return iterate(Iterators.flatten(mapped))
+    result = iterate(iterable)
+    isnothing(result) && return nothing
+    item, state = result
+    return item, (iterable, state)
+end
+function Base.iterate(::GroupedIntervalJoin, (iterable, state))
+    result = iterate(iterable, state)
+    isnothing(result) && return nothing
+    item, state = result
+    return item, (iterable, state)
 end
 
 function joingroup(right_df, grouped)
@@ -250,10 +259,10 @@ function joingroup(right_df, grouped)
     return transform!(joined, [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
 end
 
-function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...)
+function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...; kwargs...)
     helper = x -> combine(groupby(joingroup(DataFrame(x), grouped), grouped.left_groups), 
-                          pairs...)
-    result = combine(grouped.right_grouped, AsTable(:) => helper => AsTable; kwds...)
+                          pairs...; kwargs...)
+    result = combine(grouped.right_grouped, AsTable(:) => helper => AsTable; kwargs...)
     if grouped.left_index ∈ propertynames(result)
         return select!(result, Not(grouped.left_index))
     else
