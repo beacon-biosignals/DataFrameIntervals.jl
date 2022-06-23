@@ -41,10 +41,37 @@ function __init__()
     end
 end
 
-onleft(x) = x
-onright(x) = x
-onleft(x::Pair) = first(x)
-onright(x::Pair) = last(x)
+forleft(x) = x
+forright(x) = x
+forleft(x::Pair) = first(x)
+forright(x::Pair) = last(x)
+
+function setup_column_names!(left, right; on, renamecols=identity => identity, 
+                             renameon=:_left => :_right)
+    if !(on isa Symbol || on isa AbstractString)
+        error("Interval joins support only one `on` column; iterables are not allowed.")
+    end
+
+    left_on = rename(forleft(on), forleft(renameon))
+    right_on = rename(forright(on), forright)
+    joined_on = forleft(on)
+    rename!(left, (renamer(n, forleft(renamecols), forleft(on), forleft(renameon)) 
+                    for n in names(left))...)
+    rename!(right, (renamer(n, forright(renamecols), forright(on), forright(renameon)) 
+                    for n in names(right))...)
+    if string(left_on) ∈ joined_on
+        error("Interval join failed: left dataframe's `on` column has the final name ",
+                "`$left_on` which clashes with joined dataframe's `on` column name ",
+                "`$joined_on`. Make sure `renameon` is set properly.")
+    end
+    if string(right_on) ∈ joined_on
+        error("Interval join failed: right dataframe's `on` column has the final name ",
+                "`$right_on` which clashes with joined dataframe's `on` column name ",
+                "`$joined_on`. Make sure `renameon` is set properly.")
+    end
+
+    return (;left_on, right_on, joined_on, left, right)
+end
 
 """
     interval_join(left, right; on, renamecols=identity => identity, 
@@ -73,26 +100,17 @@ these are typically intervals of time. The join includes one row for every pair 
    stored in the resulting data frame, following the same format as `renamecols`.
 
 """
-function interval_innerjoin(left, right; on, renamecols=identity => identity, 
-                            renameon=:_left => :_right, makeunique=false)
-    regions = find_intersections_(view(right, :, onright(on)), view(left, :, onleft(on)))
-    if !(on isa Symbol || on isa AbstractString)
-        error("Interval joins support only one `on` column; iterables are not allowed.")
-    end
+function interval_innerjoin(left, right; makeunique=false, kwds...)
+    left = DataFrame(left, copycols=false)
+    right = DataFrame(right, copycols=false)
+    (;left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
+    regions = find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
+    # perform the join
     left_side, right_side = join_indices(regions, left, right)
-    rename!(left, (renamer(n, onleft(renamecols), onleft(on), onleft(renameon)) 
-                 for n in names(left))...)
-    rename!(right, (renamer(n, onright(renamecols), onright(on), onright(renameon)) 
-                 for n in names(right))...)
-    # TODO: we need the renamed on column
-    if string(onleft(on)) ∈ names(left) || string(onleft(on)) ∈ names(right)
-        error("`interval_innerjoin` requires that you give a new name to the `on` column using 
-               `renameon`.")
-    end
     joined = hcat(right_side, left_side; makeunique)
-    transform!(df, [onleft(on), onright(on)] => ByRow(intersect_) => onleft(on))
-    add_ons!(joined, on, view(left_side, :, on), view(right_side, :, on), renameon)
+    transform!(joined, [left_on, right_on] => ByRow(intersect_) => joined_on)
+    
     return joined
 end
 function renamer(n, renamecols, on, renameon)
@@ -121,10 +139,10 @@ function check_spancol(spancol, names)
     return names
 end
 
-# `find_valid`: returns a list of all columns from a `DataFrames` column selector that
-# are valid when making a call to `split_into_combine`. This has to check that `spancol` is
-# not included (since we cannot group by the time span column we're using to compute joins
-# Any explicitly specified columns that are not valid are returned as `Invalid` objects.
+# `find_valid`: given a DataFrame column selector return an array of strings and `Invalid`
+# objects. The strings represent all columns present in the dataframe that would be selected
+# by the given selector. Any `Invalid` values are columns the selector requestred that were
+# not actually present in the dataframe. 
 function find_valid(on, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
     error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
 end
@@ -163,32 +181,33 @@ end
 find_valid(on, df, cols) = mapreduce(c -> find_valid(on, df, c), vcat, cols)
 
 # helper for `split_into_combine`
-const PairLike = Union{AbstractVector{<:Pair}, <:Pair}
-combine_view(df, groups, pairs...) = (span, indices) -> _combine_view(span, indices, df, groups, pairs...)
-function _combine_view(span, indices, df, groups, pairs...)
-    df, span = split(indices, df, span)
-    df = spans_for_split!(copy(df), df.span, vec(span))
-    return combine(groupby(df, groups), pairs...)
+
+struct GroupedIntervalJoin{R,LG,LD}
+    right_grouped::R
+    left_groups::LG
+    left_df::LD
+    makeunique::Bool
+    left_index::Symbol
+    left_on::Symbol
+    right_on::Symbol
+    joined_on::Symbol
 end
 
 """
-    combine_interval_join(left, right, groups, pairs...; on=:span)
+    groupby_interval_join(left, right, groups; on, renamecols=identity => identity, 
+                          renameon=:_left => :_right, makeunique=false)
 
-    Equivalent to, but less resource intensive than 
-`combine(groupby(split_into(left, right), groups), pairs...)`. The one caveat is that
-the only column from `right` that `pairs` can reference is the `on` column.
+    Similar to, but less resource intensive than 
+`groupby(interval_join(left, right), groups)`. You can iterate over the groups or
+call `combine` on said groups. Note however that the returned object is not a
+`GroupedDataFrame` and only supports these two operations.
+
+See also [`interval_join`](@ref)
 """
-function combine_interval_join(left, right, groups, pairs...; on=:span, kwds...)
-    regions = find_intersections_(view(right, :, on), view(left, :, on))
-    right = insertcols!(DataFrame(right, copycols=false), :left_index => regions)
-    
-    # the groupings passed apply to both left and right data frames but we need to groupby
-    # *befure* we combine them so we need our own methods to figure out which columns belong
-    # to which dataframe; this is all complicated by the fact that columns 
-    # can be specified in a variety of different ways: e.g. Not(:span).
-
-    right_groups = find_valid(on, right, groups)
-    left_groups = find_valid(on, left, groups)
+function groupby_interval_join(left, right, groups; on, makeunique=false, kwds...)
+    # split column groupings into `left` columns and `right` columns
+    right_groups = find_valid(forright(on), right, groups)
+    left_groups = find_valid(forleft(on), left, groups)
 
     right_cols = filter(x -> x isa String, right_groups)
     right_invalid = filter(x -> x isa Invalid, right_groups)
@@ -199,13 +218,44 @@ function combine_interval_join(left, right, groups, pairs...; on=:span, kwds...)
     if !isempty(invalid)
         error("Columns do not exist: "*join(string.(invalid), ", ", " and "))
     end
-    grouped = groupby(right, right_cols)
+
+    # setup column names
+    left = DataFrame(left, copycols=false)
+    right = DataFrame(right, copycols=false)
+    (;left_on, right_on, joined_on) = setup_column_names!(left, right; on, kwds...)
     
-    result = combine(grouped,
-                     [on, :left_index] => combine_view(left, left_cols, pairs...) => AsTable;
-                     kwds...)
-    if :left_index ∈ propertynames(result)
-        return select(result, Not(:left_index))
+    # compute interval intersections
+    left_index = gensym(:__left_index__)
+    regions = find_intersections_(view(right, :, right_on), view(left, :, left_on))
+    right = insertcols!(right, left_index => regions)
+
+    # a lazy instantiation of the joined dataframe
+    return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique, 
+                               left_index, left_on, right_on, joined_on)
+end
+
+function Base.iterate(x::GroupedIntervalJoin)
+    mapped = Iterators.map(x.right_grouped) do gdf
+        return groupby(select!(joingroup(gdf, x), Not(grouped.left_index)), 
+                       grouped.left_groups)
+    end
+
+    return iterate(Iterators.flatten(mapped))
+end
+
+function joingroup(right_df, grouped)
+    left_df = grouped.left_df
+    left_side, right_side = join_indices(right_df[!, grouped.left_index], left_df, right_df)
+    joined = hcat(right_side, left_side; grouped.makeunique)
+    return transform!(joined, [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
+end
+
+function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...)
+    helper = x -> combine(groupby(joingroup(DataFrame(x), grouped), grouped.left_groups), 
+                          pairs...)
+    result = combine(grouped.right_grouped, AsTable(:) => helper => AsTable; kwds...)
+    if grouped.left_index ∈ propertynames(result)
+        return select!(result, Not(grouped.left_index))
     else
         return result
     end
@@ -223,8 +273,8 @@ function intervals(steps, el)
     end
 end
 toval(x::TimePeriod) = float(Dates.value(convert(Nanosecond, x)))
-toperiod(x::Real) = Nanosecond(round(Int, x, RoundDown))
-range_(a::TimePeriod, b::TimePeriod; length) = map(toperiod, range(toval(a), toval(b); length))
+asnanoseconds(x::Real) = Nanosecond(round(Int, x, RoundDown))
+range_(a::TimePeriod, b::TimePeriod; length) = map(asnanoseconds, range(toval(a), toval(b); length))
 range_(a, b; length) = range(a, b; length)
 
 """
@@ -239,7 +289,7 @@ column.
 The value `span` can also be a dataframe, in which case quantiles that cover the entire
 range of time spans in the dataframe are used.
 
-The output is useful as the right argument to `split_into` and `split_into_combine`.
+The output is useful as the right argument to `interva_join` and `groupby_interval_join`
 """
 function quantile_windows(n, span_; spancol=:span, label=:index, min_duration=nothing)
     ismissing(span_) && return missing
@@ -247,7 +297,7 @@ function quantile_windows(n, span_; spancol=:span, label=:index, min_duration=no
     span = interval(span_)
     splits = intervals(range_(first(span), last(span); length=n+1), span_)
     min_duration = if isnothing(min_duration) 
-        toperiod(0.75*toval(Intervals.span(interval(first(splits)))))
+        asnanoseconds(0.75*toval(Intervals.span(interval(first(splits)))))
     else
         min_duration
     end
