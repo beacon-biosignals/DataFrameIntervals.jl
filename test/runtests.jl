@@ -24,6 +24,8 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]), atol=Nanosecond(1)) ||
           duration(quarters.span[4]) ≤ duration(quarters.span[3])
 
+    # TODO: test various column renaming bevhariors
+
     # NOTE: the bulk of the correctness testing for interval intersections
     # has already been handled by `Intervals.find_intervals`
     df_result = interval_join(df1, quarters, on=:span)
@@ -34,7 +36,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
                                        DataFrameIntervals.interval.(df1.span))
     @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
     
-    # split_into_combine equivalence
+    # groubpy_interval_join equivalence
     df_combined = combine(groupby_interval_join(df1, quarters, [:quarter, :label], on=:span), :x => mean)
     df_manual_combined = combine(groupby(interval_join(df1, quarters, on=:span), [:quarter, :label]), :x => mean)
     @test df_combined.x_mean == df_manual_combined.x_mean

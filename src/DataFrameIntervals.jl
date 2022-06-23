@@ -196,9 +196,9 @@ end
                           renameon=:_left => :_right, makeunique=false)
 
     Similar to, but less resource intensive than 
-`groupby(interval_join(left, right), groups)`. You can iterate over the groups or
-call `combine` on said groups. Note however that the returned object is not a
-`GroupedDataFrame` and only supports these two operations.
+`groupby(interval_join(left, right), groups)`. You can iterate over the groups or call
+`combine` on said groups. Note however that the returned object is not a `GroupedDataFrame`
+and only supports these two operations.
 
 See also [`interval_join`](@ref)
 """
