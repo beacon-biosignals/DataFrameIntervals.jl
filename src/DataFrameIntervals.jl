@@ -47,7 +47,7 @@ forleft(x::Pair) = first(x)
 forright(x::Pair) = last(x)
 
 function setup_column_names!(left, right; on, renamecols=identity => identity,
-                             renameon=:_left => :_right)
+    renameon=:_left => :_right)
     if !(on isa Symbol || on isa AbstractString)
         error("Interval joins support only one `on` column; iterables are not allowed.")
     end
@@ -56,20 +56,20 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
     right_on = renamer(forright(on), forright(renameon))
     joined_on = forleft(on)
     rename!(left,
-            (renamer(n, forleft(renamecols), forleft(on), forleft(renameon))
-             for n in names(left))...)
+        (renamer(n, forleft(renamecols), forleft(on), forleft(renameon))
+         for n in names(left))...)
     rename!(right,
-            (renamer(n, forright(renamecols), forright(on), forright(renameon))
-             for n in names(right))...)
+        (renamer(n, forright(renamecols), forright(on), forright(renameon))
+         for n in names(right))...)
     if string(left_on) == string(joined_on)
         error("Interval join failed: left dataframe's `on` column has the final name ",
-              "`$left_on` which clashes with joined dataframe's `on` column name ",
-              "`$joined_on`. Make sure `renameon` is set properly.")
+            "`$left_on` which clashes with joined dataframe's `on` column name ",
+            "`$joined_on`. Make sure `renameon` is set properly.")
     end
     if string(right_on) == string(joined_on)
         error("Interval join failed: right dataframe's `on` column has the final name ",
-              "`$right_on` which clashes with joined dataframe's `on` column name ",
-              "`$joined_on`. Make sure `renameon` is set properly.")
+            "`$right_on` which clashes with joined dataframe's `on` column name ",
+            "`$joined_on`. Make sure `renameon` is set properly.")
     end
 
     return (; left_on, right_on, joined_on, left, right)
@@ -147,8 +147,8 @@ end
 # by the given selector. Any `Invalid` values are columns the selector requestred that were
 # not actually present in the dataframe. 
 function find_valid(on, df,
-                    col::Union{<:Integer,<:AbstractRange{<:Integer},
-                               <:AbstractVector{<:Integer}})
+    col::Union{<:Integer,<:AbstractRange{<:Integer},
+        <:AbstractVector{<:Integer}})
     return error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
 end
 function find_valid(on, df, col::Union{<:AbstractString,Symbol})
@@ -236,14 +236,14 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
 
     # a lazy instantiation of the joined dataframe
     return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique,
-                               Symbol(left_index), Symbol(left_on), Symbol(right_on),
-                               Symbol(joined_on))
+        Symbol(left_index), Symbol(left_on), Symbol(right_on),
+        Symbol(joined_on))
 end
 
 function Base.iterate(grouped::GroupedIntervalJoin)
     mapped = Iterators.map(grouped.right_grouped) do gdf
         return groupby(select!(joingroup(gdf, grouped), Not(grouped.left_index)),
-                       grouped.left_groups)
+            grouped.left_groups)
     end
     iterable = Iterators.flatten(mapped)
 
@@ -264,12 +264,12 @@ function joingroup(right_df, grouped)
     left_side, right_side = join_indices(right_df[!, grouped.left_index], left_df, right_df)
     joined = hcat(right_side, left_side; grouped.makeunique)
     return transform!(joined,
-                      [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
+        [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
 end
 
 function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...; kwargs...)
     helper = x -> combine(groupby(joingroup(DataFrame(x), grouped), grouped.left_groups),
-                          pairs...; kwargs...)
+        pairs...; kwargs...)
     result = combine(grouped.right_grouped, AsTable(:) => helper => AsTable; kwargs...)
     if grouped.left_index ∈ propertynames(result)
         return select!(result, Not(grouped.left_index))
@@ -286,7 +286,7 @@ value_helper(x::Pair, _) = last(x)
 
 function intervals(steps, el)
     return map(steps[1:end-1], steps[2:end]) do start, stop
-        return backto(el, Interval{eltype(steps), Closed, Open}(start, stop))
+        return backto(el, Interval{eltype(steps),Closed,Open}(start, stop))
     end
 end
 toval(x::TimePeriod) = float(Dates.value(convert(Nanosecond, x)))
@@ -312,20 +312,20 @@ function quantile_windows(n, span_; spancol=:span, label=:index, min_duration=no
     ismissing(span_) && return missing
 
     span = interval(span_)
-    splits = intervals(range_(first(span), last(span); length=n+1), span_)
-    min_duration = if isnothing(min_duration) 
-        asnanoseconds(0.75*toval(Intervals.span(interval(first(splits)))))
+    splits = intervals(range_(first(span), last(span); length=n + 1), span_)
+    min_duration = if isnothing(min_duration)
+        asnanoseconds(0.75 * toval(Intervals.span(interval(first(splits)))))
     else
         min_duration
     end
-    df = DataFrame(;(spancol => splits, label_helper(label) => value_helper(label, n))...)
+    df = DataFrame(; (spancol => splits, label_helper(label) => value_helper(label, n))...)
     return df
 end
-function quantile_windows(n, span::DataFrame; spancol=:span, kwds...) 
+function quantile_windows(n, span::DataFrame; spancol=:span, kwds...)
     return quantile_windows(n, dfspan(span, spancol); spancol, kwds...)
 end
 
-function dfspan(df, spancol) 
+function dfspan(df, spancol)
     if nrow(df) == 0
         return missing
     else

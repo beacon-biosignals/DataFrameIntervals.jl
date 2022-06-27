@@ -14,13 +14,13 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
 @testset "DataFrameIntervals.jl" begin
     n = 100
     tovalue(x) = Nanosecond(round(Int, x * 1e9))
-    times = cumsum(rand(MersenneTwister(hash((:dataframe_intervals, 2022_06_01))), Gamma(3, 2), n+1))
+    times = cumsum(rand(MersenneTwister(hash((:dataframe_intervals, 2022_06_01))), Gamma(3, 2), n + 1))
     spans = TimeSpan.(tovalue.(times[1:(end-1)]), tovalue.(times[2:end]))
-    df1 = DataFrame(label = rand(('a':'d'), n), x = rand(n), span = spans)
+    df1 = DataFrame(label=rand(('a':'d'), n), x=rand(n), span=spans)
     quarters = quantile_windows(4, df1, label=:quarter)
     @test nrow(quarters) == 4
-    @test isapprox(duration(quarters.span[1]), duration(quarters.span[2]), atol=Nanosecond(1)) 
-    @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]), atol=Nanosecond(1)) 
+    @test isapprox(duration(quarters.span[1]), duration(quarters.span[2]), atol=Nanosecond(1))
+    @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]), atol=Nanosecond(1))
     @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]), atol=Nanosecond(1)) ||
           duration(quarters.span[4]) ≤ duration(quarters.span[3])
 
@@ -33,10 +33,10 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     for quarter in groupby(df_result, :span_right)
         @test sum(duration, quarter.span) ≤ duration(quarter.span_right[1])
     end
-    ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span), 
-                                       DataFrameIntervals.interval.(df1.span))
+    ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span),
+        DataFrameIntervals.interval.(df1.span))
     @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
-    
+
     # groubpy_interval_join equivalence
     df_combined = combine(groupby_interval_join(df1, quarters, [:quarter, :label], on=:span), :x => mean)
     df_manual_combined = combine(groupby(interval_join(df1, quarters, on=:span), [:quarter, :label]), :x => mean)
@@ -56,7 +56,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test_throws err combine(groupby_interval_join(df1, quarters, All(), on=:span), :x => mean)
     @test_throws err combine(groupby_interval_join(df1, quarters, Cols(:), on=:span), :x => mean)
 
-    df2 = DataFrame(label = rand(('a':'d'), n), sublabel = rand(('k':'n'), n), x = rand(n), span = spans)
+    df2 = DataFrame(label=rand(('a':'d'), n), sublabel=rand(('k':'n'), n), x=rand(n), span=spans)
     df2_split = combine(groupby_interval_join(df2, quarters, on=:span, Cols(Between(:label, :sublabel), :quarter)), :x => mean)
     df2_manual = combine(groupby(interval_join(df2, quarters, on=:span), Cols(Between(:label, :sublabel), :quarter)), :x => mean)
     @test df2_split.x_mean == df2_manual.x_mean
@@ -64,11 +64,11 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test_throws ErrorException combine(groupby_interval_join(df2, quarters, Cols(1:2), on=:span), :x => mean)
 
     @testset "Code Quality" begin
-        Aqua.test_all(DataFrameIntervals; 
-                    project_extras=true,
-                    stale_deps=true,
-                    deps_compat=true,
-                    project_toml_formatting=true,
-                    ambiguities=false)
+        Aqua.test_all(DataFrameIntervals;
+            project_extras=true,
+            stale_deps=true,
+            deps_compat=true,
+            project_toml_formatting=true,
+            ambiguities=false)
     end
 end
