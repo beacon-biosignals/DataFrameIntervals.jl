@@ -76,13 +76,14 @@ end
                   renameon=:_left => :_right, makeunique=false)
 
 Join two dataframes based on the intervals they represent (denoted by the `on` column);
-these are typically intervals of time. The join includes one row for every pair of rows in
-`left` and `right` whose intervals overlap (i.e. `!isempty(intersect(left.on, right.on))`).
+these are typically intervals of time. The join includes one row for every pairing of rows
+in `left` and `right` whose intervals overlap (i.e. `!isempty(intersect(left.on,
+right.on))`).
 
 - `on`: The column name to join left and right on. If the column on which left and right
   will be joined have different names, then a left=>right pair can be passed. on is a
-  required argument. The value of the on in the output data frame is the intersection of the
-  left and right interval.
+  required argument. The value of the on column in the output data frame is the intersection
+  of the left and right interval.
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
@@ -92,7 +93,7 @@ these are typically intervals of time. The join includes one row for every pair 
   renamed in the resulting data frame. Each element of the pair can be a string or a Symbol
   can be passed in which case it is appended to the original column name; alternatively a
   function can be passed in which case it is applied to each column name, which is passed to
-  it as a String. Note that renamecols does not affect on columns.
+  it as a String. Note that renamecols does not affect any of the `on` columns.
 
 - `renameon`: a Pair specifying how the left and right data frame `on` column is renamed and
    stored in the resulting data frame, following the same format as `renamecols`.

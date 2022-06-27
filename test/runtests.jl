@@ -27,7 +27,8 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     # TODO: test various column renaming bevhariors
 
     # NOTE: the bulk of the correctness testing for interval intersections
-    # has already been handled by `Intervals.find_intervals`
+    # has already been handled by calling out to `Intervals.find_intervals`
+    # which has been tested in `Intervals.jl`
     df_result = interval_join(df1, quarters, on=:span)
     for quarter in groupby(df_result, :span_right)
         @test sum(duration, quarter.span) ≤ duration(quarter.span_right[1])
