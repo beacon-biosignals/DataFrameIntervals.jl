@@ -7,15 +7,15 @@ export quantile_windows, interval_join, groupby_interval_join
 ##### Support `find_intersection` and `intersect` over `Interval` and `TimeSpan` objects.
 #####
 
-function find_intersections_(x::AbstractVector, y::AbstractVector) 
-    Intervals.find_intersections(IntervalArray(x), IntervalArray(y))
+function find_intersections_(x::AbstractVector, y::AbstractVector)
+    return Intervals.find_intersections(IntervalArray(x), IntervalArray(y))
 end
 intersect_(x, y) = backto(x, intersect(interval(x), interval(y)))
 
 # IntervalArray is a helper that treats any vector of interval-like objects as an array of
 # `Interval` objects. For now this includes only `TimeSpans` (though there are several other
 # pacakges that could be supported in theory, e.g. the interval object from AxisArrays)
-struct IntervalArray{A, I} <: AbstractVector{I}
+struct IntervalArray{A,I} <: AbstractVector{I}
     val::A
 end
 Base.size(x::IntervalArray) = size(x.val)
@@ -31,10 +31,12 @@ backto(::Interval, x) = x
 function __init__()
     @require TimeSpans = "bb34ddd2-327f-4c4a-bfb0-c98fc494ece1" begin
         using .TimeSpans
-        interval(x::TimeSpan) = Interval{Nanosecond, Closed, Open}(x.start, x.stop)
-        backto(::TimeSpan, x::Interval{Nanosecond, Closed, Open}) = TimeSpan(first(x), last(x))
+        interval(x::TimeSpan) = Interval{Nanosecond,Closed,Open}(x.start, x.stop)
+        function backto(::TimeSpan, x::Interval{Nanosecond,Closed,Open})
+            return TimeSpan(first(x), last(x))
+        end
         function IntervalArray(x::AbstractVector{<:TimeSpan})
-            IntervalArray{typeof(x), Interval{Nanosecond, Closed, Open}}(x)
+            return IntervalArray{typeof(x),Interval{Nanosecond,Closed,Open}}(x)
         end
     end
 end
@@ -44,7 +46,7 @@ forright(x) = x
 forleft(x::Pair) = first(x)
 forright(x::Pair) = last(x)
 
-function setup_column_names!(left, right; on, renamecols=identity => identity, 
+function setup_column_names!(left, right; on, renamecols=identity => identity,
                              renameon=:_left => :_right)
     if !(on isa Symbol || on isa AbstractString)
         error("Interval joins support only one `on` column; iterables are not allowed.")
@@ -53,22 +55,24 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
     left_on = renamer(forleft(on), forleft(renameon))
     right_on = renamer(forright(on), forright(renameon))
     joined_on = forleft(on)
-    rename!(left, (renamer(n, forleft(renamecols), forleft(on), forleft(renameon)) 
-                    for n in names(left))...)
-    rename!(right, (renamer(n, forright(renamecols), forright(on), forright(renameon)) 
-                    for n in names(right))...)
+    rename!(left,
+            (renamer(n, forleft(renamecols), forleft(on), forleft(renameon))
+             for n in names(left))...)
+    rename!(right,
+            (renamer(n, forright(renamecols), forright(on), forright(renameon))
+             for n in names(right))...)
     if string(left_on) == string(joined_on)
         error("Interval join failed: left dataframe's `on` column has the final name ",
-                "`$left_on` which clashes with joined dataframe's `on` column name ",
-                "`$joined_on`. Make sure `renameon` is set properly.")
+              "`$left_on` which clashes with joined dataframe's `on` column name ",
+              "`$joined_on`. Make sure `renameon` is set properly.")
     end
     if string(right_on) == string(joined_on)
         error("Interval join failed: right dataframe's `on` column has the final name ",
-                "`$right_on` which clashes with joined dataframe's `on` column name ",
-                "`$joined_on`. Make sure `renameon` is set properly.")
+              "`$right_on` which clashes with joined dataframe's `on` column name ",
+              "`$joined_on`. Make sure `renameon` is set properly.")
     end
 
-    return (;left_on, right_on, joined_on, left, right)
+    return (; left_on, right_on, joined_on, left, right)
 end
 
 """
@@ -100,24 +104,22 @@ right.on))`).
 
 """
 function interval_join(left, right; makeunique=false, kwds...)
-    left = DataFrame(left, copycols=false)
-    right = DataFrame(right, copycols=false)
-    (;left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
+    left = DataFrame(left; copycols=false)
+    right = DataFrame(right; copycols=false)
+    (; left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
     regions = find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
     # perform the join
     left_side, right_side = join_indices(regions, left, right)
     joined = hcat(right_side, left_side; makeunique)
     transform!(joined, [left_on, right_on] => ByRow(intersect_) => joined_on)
-    
     return joined
 end
 function renamer(n, renamecols, on, renameon)
     return n == string(on) ? n => renamer(n, renameon) : n => renamer(n, renamecols)
 end
-renamer(col, suffix::Union{Symbol, AbstractString}) = string(col, suffix)
+renamer(col, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
 renamer(col, fn) = fn(col)
-    
 function join_indices(regions, left, right)
     ixs = map(enumerate(regions)) do (right_i, left_ixs)
         return (fill(right_i, length(left_ixs)), left_ixs)
@@ -132,7 +134,9 @@ struct Invalid
     name::String
 end
 Base.string(x::Invalid) = x.name
-oncol_error(on) = error("Column $on cannot be used for grouping during a call to `split_into_combine`.")
+function oncol_error(on)
+    return error("Column $on cannot be used for grouping during a call to `split_into_combine`.")
+end
 function check_oncol(on, names)
     string(on) ∈ names && oncol_error(on)
     return names
@@ -142,18 +146,21 @@ end
 # objects. The strings represent all columns present in the dataframe that would be selected
 # by the given selector. Any `Invalid` values are columns the selector requestred that were
 # not actually present in the dataframe. 
-function find_valid(on, df, col::Union{<:Integer, <:AbstractRange{<:Integer}, <:AbstractVector{<:Integer}})
-    error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
+function find_valid(on, df,
+                    col::Union{<:Integer,<:AbstractRange{<:Integer},
+                               <:AbstractVector{<:Integer}})
+    return error("Cannot use index or boolean as grouping variable when using `split_into_combine`")
 end
-function find_valid(on, df, col::Union{<:AbstractString, Symbol}) 
+function find_valid(on, df, col::Union{<:AbstractString,Symbol})
     col = string(col)
-    return col ∈ names(df) ? check_oncol(on, Union{String, Invalid}[col]) : Union{String, Invalid}[Invalid(col)]
+    return col ∈ names(df) ? check_oncol(on, Union{String,Invalid}[col]) :
+           Union{String,Invalid}[Invalid(col)]
 end
 function find_valid(on, df, cols::Not)
     valids = in.(string.(cols.skip), Ref(names(df)))
-    check_oncol(on, names(df, Not(cols.skip[valids])))
+    return check_oncol(on, names(df, Not(cols.skip[valids])))
 end
-function find_valid(on, df, cols::Not{<:Union{Symbol, <:AbstractString}})
+function find_valid(on, df, cols::Not{<:Union{Symbol,<:AbstractString}})
     if in(string(cols.skip), names(df))
         check_oncol(on, names(df, cols))
     else
@@ -163,10 +170,10 @@ end
 find_valid(on, df, cols::All) = oncol_error(on)
 find_valid(on, df, cols::Colon) = oncol_error(on)
 function find_valid(on, df, cols::Cols{<:Tuple{<:Function}})
-    check_oncol(on, names(df, cols))
+    return check_oncol(on, names(df, cols))
 end
 function find_valid(on, df, cols::Cols)
-    check_oncol(on, union(find_valid.(on, Ref(df), cols.cols)...))
+    return check_oncol(on, union(find_valid.(on, Ref(df), cols.cols)...))
 end
 find_valid(on, df, cols::Regex) = check_oncol(on, names(df, cols))
 function find_valid(on, df, cols::Between)
@@ -212,31 +219,30 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
     right_invalid = filter(x -> x isa Invalid, right_groups)
     left_cols = filter(x -> x isa String, left_groups)
     left_invalid = filter(x -> x isa Invalid, left_groups)
-    
     invalid = intersect(right_invalid, left_invalid)
     if !isempty(invalid)
-        error("Columns do not exist: "*join(string.(invalid), ", ", " and "))
+        error("Columns do not exist: " * join(string.(invalid), ", ", " and "))
     end
 
     # setup column names
-    left = DataFrame(left, copycols=false)
-    right = DataFrame(right, copycols=false)
-    (;left_on, right_on, joined_on) = setup_column_names!(left, right; on, kwds...)
-    
+    left = DataFrame(left; copycols=false)
+    right = DataFrame(right; copycols=false)
+    (; left_on, right_on, joined_on) = setup_column_names!(left, right; on, kwds...)
+
     # compute interval intersections
     left_index = gensym(:__left_index__)
     regions = find_intersections_(view(right, :, right_on), view(left, :, left_on))
     right = insertcols!(right, left_index => regions)
 
     # a lazy instantiation of the joined dataframe
-    return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique, 
-                               Symbol(left_index), Symbol(left_on), Symbol(right_on), 
+    return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique,
+                               Symbol(left_index), Symbol(left_on), Symbol(right_on),
                                Symbol(joined_on))
 end
 
 function Base.iterate(grouped::GroupedIntervalJoin)
     mapped = Iterators.map(grouped.right_grouped) do gdf
-        return groupby(select!(joingroup(gdf, grouped), Not(grouped.left_index)), 
+        return groupby(select!(joingroup(gdf, grouped), Not(grouped.left_index)),
                        grouped.left_groups)
     end
     iterable = Iterators.flatten(mapped)
@@ -257,11 +263,12 @@ function joingroup(right_df, grouped)
     left_df = grouped.left_df
     left_side, right_side = join_indices(right_df[!, grouped.left_index], left_df, right_df)
     joined = hcat(right_side, left_side; grouped.makeunique)
-    return transform!(joined, [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
+    return transform!(joined,
+                      [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
 end
 
 function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...; kwargs...)
-    helper = x -> combine(groupby(joingroup(DataFrame(x), grouped), grouped.left_groups), 
+    helper = x -> combine(groupby(joingroup(DataFrame(x), grouped), grouped.left_groups),
                           pairs...; kwargs...)
     result = combine(grouped.right_grouped, AsTable(:) => helper => AsTable; kwargs...)
     if grouped.left_index ∈ propertynames(result)
