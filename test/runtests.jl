@@ -25,7 +25,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]),
                    atol=Nanosecond(1))
     @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]);
-                   atol=Nanosecond(1)) ||
+                    atol=Nanosecond(1)) ||
           duration(quarters.span[4]) ≤ duration(quarters.span[3])
 
     # TODO: test various column renaming bevhariors
@@ -40,6 +40,12 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span),
                                        DataFrameIntervals.interval.(df1.span))
     @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
+
+    # test interval joins with named tuples
+    nt_spans = [(;start=start(x), stop=stop(x)) for x in spans]
+    df1_nt = hcat(df1[!, Not(:span)], DataFrame(;span = nt_spans))
+    df_result_nt = interval_join(df1_nt, quarters; on=:span)
+    @test nrow(df_result_nt) == nrow(df_result)
 
     # groubpy_interval_join equivalence
     df_combined = combine(groupby_interval_join(df1, quarters, [:quarter, :label];
@@ -69,8 +75,9 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
 
     df2 = DataFrame(; label=rand(('a':'d'), n), sublabel=rand(('k':'n'), n), x=rand(n),
                     span=spans)
-    df2_split = combine(groupby_interval_join(df2, quarters; on=:span,
-                                              Cols(Between(:label, :sublabel), :quarter)),
+    df2_split = combine(groupby_interval_join(df2, quarters,
+                                              Cols(Between(:label, :sublabel), :quarter);
+                                              on=:span,),
                         :x => mean)
     df2_manual = combine(groupby(interval_join(df2, quarters; on=:span),
                                  Cols(Between(:label, :sublabel), :quarter)), :x => mean)

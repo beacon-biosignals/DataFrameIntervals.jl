@@ -13,8 +13,8 @@ end
 intersect_(x, y) = backto(x, intersect(interval(x), interval(y)))
 
 # IntervalArray is a helper that treats any vector of interval-like objects as an array of
-# `Interval` objects. For now this includes only `TimeSpans` (though there are several other
-# pacakges that could be supported in theory, e.g. the interval object from AxisArrays)
+# `Interval` objects. For now this includes only `TimeSpans` and `NamedTuple` objects with 
+# a `start` and `stop` field
 struct IntervalArray{A,I} <: AbstractVector{I}
     val::A
 end
@@ -22,10 +22,21 @@ Base.size(x::IntervalArray) = size(x.val)
 Base.getindex(x::IntervalArray, i) = interval(x.val[i])
 Base.IndexStyle(::Type{<:IntervalArray}) = IndexLinear()
 
-# supprot for `Interval` vectors
+# support for `Interval` vectors
 IntervalArray(x::AbstractVector{<:Interval}) = x
 interval(x::Interval) = x
 backto(::Interval, x) = x
+
+# support for `NamedTuple` vectors
+const IntervalTuple = Union{NamedTuple{(:start, :stop)}, NamedTuple{(:stop, :start)}}
+interval_type(x::Type{<:T}) where T<:IntervalTuple = Union{T.parameters[2].parameters...}
+interval_type(x::IntervalTuple) = Union{typeof(x).parameters[2].parameters...}
+function IntervalArray(x::AbstractVector{<:IntervalTuple}) 
+    return IntervalArray{typeof(x), Interval{interval_type(eltype(x)), Closed, Open}}(x)
+end
+interval(x::IntervalTuple) = Interval{interval_type(x), Closed, Open}(x.start, x.stop)
+backto(::NamedTuple{(:start, :stop)}, x::Interval) = (;start=first(x), stop=last(x))
+backto(::NamedTuple{(:stop, :start)}, x::Interval) = (;stop=last(x), start=first(x))
 
 # support for `TimeSpan` vectors
 function __init__()
@@ -87,7 +98,8 @@ right.on))`).
 - `on`: The column name to join left and right on. If the column on which left and right
   will be joined have different names, then a left=>right pair can be passed. on is a
   required argument. The value of the on column in the output data frame is the intersection
-  of the left and right interval.
+  of the left and right interval. `on` can be one of three different types of objects:
+  an `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
@@ -296,7 +308,8 @@ end
 range_(a, b; length) = range(a, b; length)
 
 """
-    quantile_windows(n, span; spancol=:span, label=:count => 1:n, min_duration = 0.75*Intervals.span(span)/n)
+    quantile_windows(n, span; spancol=:span, label=:count => 1:n, 
+                     min_duration = 0.75*Intervals.span(span)/n)
 
 Generate a data frame with `n` rows that divide the interval `span` into equally spaced
 intervals. The output is a DataFrame with a `:span` column and a column of name `label` with
