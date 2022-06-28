@@ -1,0 +1,29 @@
+name = "DataFrameIntervals"
+uuid = "33b79e07-adbe-4034-b8be-6bacde625d75"
+authors = ["Beacon Biosignals, Inc."]
+version = "0.0.1"
+
+[deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Intervals = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
+Requires = "ae029012-a4dd-5104-9daa-d747884805df"
+
+[compat]
+DataFrames = "1"
+Intervals = "1.8"
+Requires = "1"
+julia = "1.6"
+
+[extras]
+Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Intervals = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TimeSpans = "bb34ddd2-327f-4c4a-bfb0-c98fc494ece1"
+
+[targets]
+test = ["Test", "Distributions", "TimeSpans", "Intervals", "DataFrames", "Random", "Dates", "Aqua"]
