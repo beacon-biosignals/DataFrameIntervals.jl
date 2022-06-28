@@ -80,12 +80,6 @@ version = "0.4.2"
 deps = ["Random"]
 uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
 
-[[Infiltrator]]
-deps = ["InteractiveUtils", "REPL", "UUIDs"]
-git-tree-sha1 = "601c335dc13dc64ccabbb76730d30a314168014c"
-uuid = "5903a43b-9cc3-4c30-8d17-598619ec4e9b"
-version = "1.5.0"
-
 [[InlineStrings]]
 deps = ["Parsers"]
 git-tree-sha1 = "61feba885fac3a407465726d0c330b3055df897f"
@@ -98,9 +92,9 @@ uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [[Intervals]]
 deps = ["Dates", "Printf", "RecipesBase", "Serialization", "TimeZones"]
-git-tree-sha1 = "56d2bb622362de4b3065d27b2c637fd5d90e31ed"
-repo-rev = "dfl/intervalset-type"
-repo-url = "https://github.com/haberdashpi/Intervals.jl"
+git-tree-sha1 = "c6a1efca1968f7f6a572510756c3df6741c6b9f0"
+repo-rev = "rf/intervalset-type"
+repo-url = "https://github.com/invenia/Intervals.jl"
 uuid = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
 version = "1.8.0"
 
