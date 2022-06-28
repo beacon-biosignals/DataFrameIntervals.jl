@@ -9,6 +9,13 @@ of time: split_into and split_into_combine, and a helper function called `quanti
 
 Rows match in this join if their time spans overlap. The time spans can be represented as i[`TimeSpan`](https://juliapackages.com/p/timespans) objects or [`Interval`](https://juliapackages.com/p/intervals) objects.
 
+Currently this requires an unreleased version of `Intervals.jl` (which should be version 1.8 when released). Make sure to add the following to your project before adding `DataFrameIntervals`.
+
+```
+julia> ]add https://github.com/invenia/Intervals.jl#rf/intervalset-type
+```
+
+
 ## Example
 
 ```julia
