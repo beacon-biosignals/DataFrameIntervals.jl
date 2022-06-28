@@ -28,15 +28,15 @@ interval(x::Interval) = x
 backto(::Interval, x) = x
 
 # support for `NamedTuple` vectors
-const IntervalTuple = Union{NamedTuple{(:start, :stop)}, NamedTuple{(:stop, :start)}}
-interval_type(x::Type{<:T}) where T<:IntervalTuple = Union{T.parameters[2].parameters...}
+const IntervalTuple = Union{NamedTuple{(:start, :stop)},NamedTuple{(:stop, :start)}}
+interval_type(x::Type{<:T}) where {T<:IntervalTuple} = Union{T.parameters[2].parameters...}
 interval_type(x::IntervalTuple) = Union{typeof(x).parameters[2].parameters...}
-function IntervalArray(x::AbstractVector{<:IntervalTuple}) 
-    return IntervalArray{typeof(x), Interval{interval_type(eltype(x)), Closed, Open}}(x)
+function IntervalArray(x::AbstractVector{<:IntervalTuple})
+    return IntervalArray{typeof(x),Interval{interval_type(eltype(x)),Closed,Open}}(x)
 end
-interval(x::IntervalTuple) = Interval{interval_type(x), Closed, Open}(x.start, x.stop)
-backto(::NamedTuple{(:start, :stop)}, x::Interval) = (;start=first(x), stop=last(x))
-backto(::NamedTuple{(:stop, :start)}, x::Interval) = (;stop=last(x), start=first(x))
+interval(x::IntervalTuple) = Interval{interval_type(x),Closed,Open}(x.start, x.stop)
+backto(::NamedTuple{(:start, :stop)}, x::Interval) = (; start=first(x), stop=last(x))
+backto(::NamedTuple{(:stop, :start)}, x::Interval) = (; stop=last(x), start=first(x))
 
 # support for `TimeSpan` vectors
 function __init__()
