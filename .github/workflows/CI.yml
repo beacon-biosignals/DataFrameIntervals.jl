@@ -32,6 +32,8 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
+      - name: Cache
+        uses: julia-actions/cache@v1
       - name: Build
         uses: julia-actions/julia-buildpkg@v1
       - name: Test
