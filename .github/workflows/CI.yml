@@ -1,15 +1,14 @@
 name: CI
 on:
   push:
-    branches:
+    branches: [main]
     tags: '*'
   pull_request:
 concurrency:
   # Skip intermediate builds: always.
-  # Cancel intermediate builds: only if it is a pull request build.
   # Documenter and CI can be separate builds
   group: ${{ github.workflow }}-${{ github.ref }}.ci 
-  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+  cancel-in-progress: true
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
