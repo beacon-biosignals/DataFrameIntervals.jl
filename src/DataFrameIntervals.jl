@@ -335,7 +335,7 @@ function quantile_windows(n, span_; spancol=:span, label=:index, min_duration=no
     df = DataFrame(; (spancol => splits, label_helper(label) => value_helper(label, n))...)
     return df
 end
-function quantile_windows(n, span::DataFrame; spancol=:span, kwds...)
+function quantile_windows(n, span::AbstractDataFrame; spancol=:span, kwds...)
     return quantile_windows(n, dfspan(span, spancol); spancol, kwds...)
 end
 

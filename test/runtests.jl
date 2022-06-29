@@ -27,8 +27,9 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]);
                    atol=Nanosecond(1)) ||
           duration(quarters.span[4]) ≤ duration(quarters.span[3])
+    @test nrow(quantile_windows(4, subset(df1, :label => ByRow(in('a':'b'))))) == 4
 
-    # TODO: test various column renaming bevhariors
+    
 
     # NOTE: the bulk of the correctness testing for interval intersections
     # has already been handled by calling out to `Intervals.find_intervals`
