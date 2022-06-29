@@ -7,7 +7,11 @@
 DataFrameIntervals provides two functions that are handy for computing joins over intervals
 of time: `interval_join` and `groupby_interval_join`, and a helper function called `quantile_windows`.
 
-Rows match in this join if their time spans overlap. The time spans can be represented as i[`TimeSpan`](https://juliapackages.com/p/timespans) objects or [`Interval`](https://juliapackages.com/p/intervals) objects.
+Rows match in this join if their time spans overlap. The time spans can be represented as
+
+- [`TimeSpan`](https://juliapackages.com/p/timespans) objects 
+- [`Interval`](https://juliapackages.com/p/intervals) objects.
+- `NamedTuples` with a `start` and `stop` field.
 
 Currently this requires an unreleased version of `Intervals.jl` (which should be version 1.8 when released). If you don't use the manifest, make sure to add the following to your project before adding `DataFrameIntervals`.
 
