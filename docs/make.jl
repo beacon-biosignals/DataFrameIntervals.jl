@@ -9,7 +9,7 @@ makedocs(; modules=[DataFrameIntervals],
                                 # will be re-directed as needbe for a private repo
                                 canonical="https://beacon-biosignals.github.io/DataFrameIntervals.jl",
                                 assets=String[]),
-         pages=["Home" => "index.md")
+         pages=["Home" => "index.md"])
 
 deploydocs(; repo="github.com/beacon-biosignals/DataFrameIntervals.jl",
            devbranch="main",
