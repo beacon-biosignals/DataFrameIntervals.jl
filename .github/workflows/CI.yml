@@ -7,7 +7,7 @@ on:
 concurrency:
   # Skip intermediate builds: always.
   # Documenter and CI can be separate builds
-  group: ${{ github.workflow }}-${{ github.ref }}.ci 
+  group: ${{ github.head_ref }}.ci
   cancel-in-progress: true
 jobs:
   test:
