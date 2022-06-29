@@ -29,8 +29,6 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
           duration(quarters.span[4]) ≤ duration(quarters.span[3])
     @test nrow(quantile_windows(4, subset(df1, :label => ByRow(in('a':'b'))))) == 4
 
-    
-
     # NOTE: the bulk of the correctness testing for interval intersections
     # has already been handled by calling out to `Intervals.find_intervals`
     # which has been tested in `Intervals.jl`
@@ -41,6 +39,20 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span),
                                        DataFrameIntervals.interval.(df1.span))
     @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
+
+    # test column renaming
+    rename!(quarters, :span => :time_span)
+    df_result2 = interval_join(df1, quarters; on=:span => :time_span, 
+                               renameon = :_a => :_b, 
+                               renamecols = :_left => :_right)
+    rename!(quarters, :time_span => :span)
+    @test issetequal(names(df_result2), 
+                     ["time_span_b", "quarter_right", "label_left", "x_left", "span_a", 
+                      "span"])
+    quarters_2 = insertcols!(copy(quarters), :label => rand('y':'z', 4))
+    df_result3 = interval_join(df1, quarters_2; on=:span, makeunique=true)
+    @test issetequal(names(df_result3), ["span_right", "quarter", "label", "label_1", "x", 
+                                         "span_left", "span"])
 
     # test interval joins with named tuples
     nt_spans = [(; start=start(x), stop=stop(x)) for x in spans]
