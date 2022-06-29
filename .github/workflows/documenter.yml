@@ -20,7 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Setup Julia
-      - uses: julia-actions/setup-julia@v1
+        uses: julia-actions/setup-julia@v1
       - name: Cache
         uses: julia-actions/cache@v1
       - name: Build
