@@ -1,7 +1,7 @@
 name = "DataFrameIntervals"
 uuid = "33b79e07-adbe-4034-b8be-6bacde625d75"
 authors = ["Beacon Biosignals, Inc."]
-version = "0.0.1"
+version = "0.0.2"
 
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"

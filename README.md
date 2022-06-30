@@ -7,11 +7,15 @@
 [![Docs: Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://beacon-biosignals.github.io/DataFrameIntervals.jl/dev)
 
 DataFrameIntervals provides two functions that are handy for computing joins over intervals
-of time: split_into and split_into_combine, and a helper function called `quantile_windows`.
+of time: `interval_join` and `groupby_interval_join`, and a helper function called `quantile_windows`.
 
-Rows match in this join if their time spans overlap. The time spans can be represented as i[`TimeSpan`](https://juliapackages.com/p/timespans) objects or [`Interval`](https://juliapackages.com/p/intervals) objects.
+Rows match in this join if their time spans overlap. The time spans can be represented as
 
-Currently this requires an unreleased version of `Intervals.jl` (which should be version 1.8 when released). Make sure to add the following to your project before adding `DataFrameIntervals`.
+- [`TimeSpan`](https://juliapackages.com/p/timespans) objects 
+- [`Interval`](https://juliapackages.com/p/intervals) objects.
+- `NamedTuples` with a `start` and `stop` field.
+
+Currently this requires an unreleased version of `Intervals.jl` (which should be version 1.8 when released). If you don't use the manifest, make sure to add the following to your project before adding `DataFrameIntervals`.
 
 ```
 julia> ]add https://github.com/invenia/Intervals.jl#rf/intervalset-type
@@ -53,13 +57,13 @@ df = DataFrame(label = rand(('a':'d'), n), x = rand(n), span = spans)
 ```julia
 quarters = quantile_windows(4, df, label=:quarter)
 
-split_into(df, quarters)
+interval_join(df, quarters, on=:span)
 ```
 
 ```
 103×6 DataFrame
- Row │ quarter  label  x          left_span                          right_span                         span
-     │ Int64    Char   Float64    TimeSpan                           TimeSpan                           TimeSpan
+ Row │ quarter  label  x          span_left                          span_right                         span                              
+     │ Int64    Char   Float64    TimeSpan                           TimeSpan                           TimeSpan                          
 ─────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
    1 │       1  b      0.0606309  TimeSpan(00:00:05.164631882, 00:…  TimeSpan(00:00:05.164631882, 00:…  TimeSpan(00:00:05.164631882, 00:…
    2 │       1  a      0.961599   TimeSpan(00:00:08.853504418, 00:…  TimeSpan(00:00:05.164631882, 00:…  TimeSpan(00:00:08.853504418, 00:…

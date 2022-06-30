@@ -59,7 +59,8 @@ forright(x::Pair) = last(x)
 
 function setup_column_names!(left, right; on, renamecols=identity => identity,
                              renameon=:_left => :_right)
-    if !(on isa Symbol || on isa AbstractString)
+    if !(on isa Union{Symbol,AbstractString,Pair{Symbol,Symbol},
+                      Pair{<:AbstractString,<:AbstractString}})
         error("Interval joins support only one `on` column; iterables are not allowed.")
     end
 
@@ -335,7 +336,7 @@ function quantile_windows(n, span_; spancol=:span, label=:index, min_duration=no
     df = DataFrame(; (spancol => splits, label_helper(label) => value_helper(label, n))...)
     return df
 end
-function quantile_windows(n, span::DataFrame; spancol=:span, kwds...)
+function quantile_windows(n, span::AbstractDataFrame; spancol=:span, kwds...)
     return quantile_windows(n, dfspan(span, spancol); spancol, kwds...)
 end
 
