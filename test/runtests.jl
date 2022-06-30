@@ -20,9 +20,9 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     df1 = DataFrame(; label=rand(('a':'d'), n), x=rand(n), span=spans)
     quarters = quantile_windows(4, df1; label=:quarter)
     @test nrow(quarters) == 4
-    @test isapprox(duration(quarters.span[1]), duration(quarters.span[2]),
+    @test isapprox(duration(quarters.span[1]), duration(quarters.span[2]);
                    atol=Nanosecond(1))
-    @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]),
+    @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]);
                    atol=Nanosecond(1))
     @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]);
                    atol=Nanosecond(1)) ||
@@ -42,17 +42,18 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
 
     # test column renaming
     rename!(quarters, :span => :time_span)
-    df_result2 = interval_join(df1, quarters; on=:span => :time_span, 
-                               renameon = :_a => :_b, 
-                               renamecols = :_left => :_right)
+    df_result2 = interval_join(df1, quarters; on=:span => :time_span,
+                               renameon=:_a => :_b,
+                               renamecols=:_left => :_right)
     rename!(quarters, :time_span => :span)
-    @test issetequal(names(df_result2), 
-                     ["time_span_b", "quarter_right", "label_left", "x_left", "span_a", 
+    @test issetequal(names(df_result2),
+                     ["time_span_b", "quarter_right", "label_left", "x_left", "span_a",
                       "span"])
     quarters_2 = insertcols!(copy(quarters), :label => rand('y':'z', 4))
     df_result3 = interval_join(df1, quarters_2; on=:span, makeunique=true)
-    @test issetequal(names(df_result3), ["span_right", "quarter", "label", "label_1", "x", 
-                                         "span_left", "span"])
+    @test issetequal(names(df_result3),
+                     ["span_right", "quarter", "label", "label_1", "x",
+                      "span_left", "span"])
 
     # test interval joins with named tuples
     nt_spans = [(; start=start(x), stop=stop(x)) for x in spans]
