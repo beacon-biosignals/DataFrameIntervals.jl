@@ -1,8 +1,8 @@
 # DataFrameIntervals
 
-[![Build Status](https://github.com/haberdashpi/DataFrameIntervals.jl/actions/workflows/CI.yml/badge.svg?branch=)](https://github.com/biosignals/DataFrameIntervals.jl/actions/workflows/CI.yml?query=branch%3A)
+[![CI](https://github.com/beacon-biosignals/DataFrameIntervals.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/beacon-biosignals/DataFrameIntervals.jl/actions/workflows/CI.yml)
 [![Coverage](https://codecov.io/gh/beacon-biosignals/DataFrameIntervals.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/biosignals/DataFrameIntervals.jl)
-[![Code Style: YASGuide](https://img.shields.io/badge/code%20style-yas-violet.svg)](https://github.com/jrevels/YASGu)
+[![Code Style: YASGuide](https://img.shields.io/badge/code%20style-yas-violet.svg)](https://github.com/jrevels/YASGuide)
 [![Docs: Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://beacon-biosignals.github.io/DataFrameIntervals.jl/stable)
 [![Docs: Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://beacon-biosignals.github.io/DataFrameIntervals.jl/dev)
 
