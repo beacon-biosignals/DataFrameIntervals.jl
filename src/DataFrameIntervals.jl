@@ -59,8 +59,8 @@ forright(x::Pair) = last(x)
 
 function setup_column_names!(left, right; on, renamecols=identity => identity,
                              renameon=:_left => :_right)
-    if !(on isa Union{Symbol, AbstractString, Pair{Symbol, Symbol}, 
-                      Pair{<:AbstractString, <:AbstractString}})
+    if !(on isa Union{Symbol,AbstractString,Pair{Symbol,Symbol},
+                      Pair{<:AbstractString,<:AbstractString}})
         error("Interval joins support only one `on` column; iterables are not allowed.")
     end
 
