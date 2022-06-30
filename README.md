@@ -1,8 +1,8 @@
 # DataFrameIntervals
 
-[![Build Status](https://github.com/haberdashpi/DataFrameIntervals.jl/actions/workflows/CI.yml/badge.svg?branch=)](https://github.com/biosignals/DataFrameIntervals.jl/actions/workflows/CI.yml?query=branch%3A)
+[![CI](https://github.com/beacon-biosignals/DataFrameIntervals.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/beacon-biosignals/DataFrameIntervals.jl/actions/workflows/CI.yml)
 [![Coverage](https://codecov.io/gh/beacon-biosignals/DataFrameIntervals.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/biosignals/DataFrameIntervals.jl)
-[![Code Style: YASGuide](https://img.shields.io/badge/code%20style-yas-violet.svg)](https://github.com/jrevels/YASGu)
+[![Code Style: YASGuide](https://img.shields.io/badge/code%20style-yas-violet.svg)](https://github.com/jrevels/YASGuide)
 
 DataFrameIntervals provides two functions that are handy for computing joins over intervals
 of time: split_into and split_into_combine, and a helper function called `quantile_windows`.
