@@ -1,3 +1,7 @@
 [deps]
 DataFrameIntervals = "33b79e07-adbe-4034-b8be-6bacde625d75"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Intervals = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
+
+[compat]
+Documenter = "0.27"

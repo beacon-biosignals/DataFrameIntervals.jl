@@ -1,0 +1,31 @@
+name: Documenter
+on:
+  push:
+    branches: [main]
+    tags: '*'
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+concurrency:
+  group: ${{ github.head_ref }}.documenter
+  cancel-in-progress: true
+jobs:
+  Documenter:
+    name: Documentation
+    # Run on push's or non-draft PRs
+    if: (github.event_name == 'push') || (github.event.pull_request.draft == false)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v1
+      - name: Cache
+        uses: julia-actions/cache@v1
+      - name: Build
+        uses: julia-actions/julia-buildpkg@v1
+      - name: Deploy
+        uses: julia-actions/julia-docdeploy@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
