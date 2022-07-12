@@ -119,7 +119,7 @@ right.on))`).
 function interval_join(left, right; makeunique=false, kwds...)
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
-    (; left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
+    (left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
     regions = find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
     # perform the join
@@ -240,7 +240,7 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
     # setup column names
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
-    (; left_on, right_on, joined_on) = setup_column_names!(left, right; on, kwds...)
+    (left_on, right_on, joined_on) = setup_column_names!(left, right; on, kwds...)
 
     # compute interval intersections
     left_index = gensym(:__left_index__)
