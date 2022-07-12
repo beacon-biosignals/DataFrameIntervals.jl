@@ -20,7 +20,8 @@ struct IntervalArray{A,I} <: AbstractVector{I}
 end
 Base.size(x::IntervalArray) = size(x.val)
 Base.getindex(x::IntervalArray, i) = interval(x.val[i])
-Base.IndexStyle(::Type{<:IntervalArray}) = IndexLinear()
+# see https://github.com/beacon-biosignals/DataFrameIntervals.jl/issues/10
+Base.IndexStyle(::Type{<:IntervalArray{A}}) where {A} = IndexStyle(A)
 
 # support for `Interval` vectors
 IntervalArray(x::AbstractVector{<:Interval}) = x
