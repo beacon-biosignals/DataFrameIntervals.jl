@@ -8,11 +8,11 @@
 
 DataFrameIntervals provides two functions that are handy for computing joins over intervals; usually these are intervals of time. These functions are `interval_join` and `groupby_interval_join`. There is also a helper function called `quantile_windows`. See their doc strings for details (and an example below).
 
-Rows match in this join if their intervals overlap. They can be represented as
+Rows match in this join if their intervals overlap. They can be represented using any of the following objects.
 
-- [`TimeSpan`](https://juliapackages.com/p/timespans)
-- [`Interval`](https://juliapackages.com/p/intervals)
-- [`AlignedSpans`](https://github.com/beacon-biosignals/AlignedSpans.jl)
+- [`TimeSpans`](https://juliahub.com/ui/Packages/TimeSpans/Nqf3s/)
+- [`Intervals`](https://juliahub.com/ui/Packages/Intervals/ihXRn/)
+- [`AlignedSpans`](https://juliahub.com/ui/Packages/AlignedSpans/bEkeo/)
 - `NamedTuples` with a `start` and `stop` field.
 
 ## Example
