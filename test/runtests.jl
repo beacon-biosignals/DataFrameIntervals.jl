@@ -63,7 +63,14 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @test nrow(df_result_nt) == nrow(df_result)
 
     # test interval joins with aligned spans
-    al_spans = [AlignedSpan(30, )]
+    al_spans = [AlignedSpan(30, x, RoundSpanDown) for x in spans]
+    df1_ap = hcat(df1[!, Not(:span)], DataFrame(; span=al_spans))
+    df_result_ap = interval_join(df1_ap, quarters; on=:span)
+    @test nrow(df_result_ap) == nrow(df_result)
+
+    # test that abutting aligned spans do what we'd expect
+    @test all(isempty, DataFrameIntervals.find_intersections_([AlignedSpan(30, 1, 20)], [AlignedSpan(30, 21, 40)]))
+    @test DataFrameIntervals.find_intersections_([AlignedSpan(30, 1, 20)], [AlignedSpan(30, 20, 40)]) == [[1]]
 
     # groubpy_interval_join equivalence
     df_combined = combine(groupby_interval_join(df1, quarters, [:quarter, :label];

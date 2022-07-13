@@ -58,9 +58,15 @@ function __init__()
         # find_intersections because the output is always a sequences of left closed
         # intervals; this lets us avoid the logic to compute closed/open endings of
         # intervals. 
-        interval(x::AlignedSpan) = Interval{Int,Closed,Open}(x.first_index, x.last_index+1)
-        function backto(x::AlignedSpan, x_::Interval{Int,Closed,Open})
-            return AlignedSpan(x.sample_rate, first(x_), last(x_)-1)
+        function interval(x::AlignedSpan)
+            a = time_from_index(x.sample_rate, x.first_index)
+            b = time_from_index(x.sample_rate, x.last_index+1)
+            return Interval{Nanosecond,Closed,Open}(a, b)
+        end
+        function backto(x::AlignedSpan, x_::Interval{Nanosecond,Closed,Open})
+            ai = AlignedSpans.start_index_from_time(x.sample_rate, x_, RoundDown)
+            bi = AlignedSpans.stop_index_from_time(x.sample_rate, x_, RoundDown)-1
+            return AlignedSpan(x.sample_rate, ai, bi)
         end
         function IntervalArray(x::AbstractVector{<:AlignedSpan})
             same_sample_rate = all(x) do xᵢ
@@ -70,7 +76,7 @@ function __init__()
                 error("AlignedSpan vector must have homogeneous sample rate. Convert to ",
                       "intervals of time to handle heterogenous sample rates.")
             end
-            return IntervalArray{typeof(x), Interval{Int,Closed,Open}}(x)
+            return IntervalArray{typeof(x), Interval{Nanosecond,Closed,Open}}(x)
         end
     end
 end
@@ -367,7 +373,8 @@ function dfspan(df, spancol)
     if nrow(df) == 0
         return missing
     else
-        return backto(first(df[!, spancol]), superset(IntervalArray(df[!, spancol])))
+        return backto(first(df[!, spancol]), 
+                      superset(IntervalSet(IntervalArray(df[!, spancol]))))
     end
 end
 
