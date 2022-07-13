@@ -88,6 +88,7 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
         @test gdf1.x == gdf2.x
     end
 
+    # test out various column specifiers
     df_combined = combine(groupby_interval_join(df1, quarters, r"quar|lab"; on=:span),
                           :x => mean)
     df_combined = combine(groupby_interval_join(df1, quarters, Cols(:quarter, r"lab");
