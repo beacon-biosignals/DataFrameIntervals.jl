@@ -60,23 +60,23 @@ function __init__()
         # intervals. 
         function interval(x::AlignedSpan)
             a = time_from_index(x.sample_rate, x.first_index)
-            b = time_from_index(x.sample_rate, x.last_index+1)
+            b = time_from_index(x.sample_rate, x.last_index + 1)
             return Interval{Nanosecond,Closed,Open}(a, b)
         end
         function backto(x::AlignedSpan, x_::Interval{Nanosecond,Closed,Open})
             ai = AlignedSpans.start_index_from_time(x.sample_rate, x_, RoundDown)
-            bi = AlignedSpans.stop_index_from_time(x.sample_rate, x_, RoundDown)-1
+            bi = AlignedSpans.stop_index_from_time(x.sample_rate, x_, RoundDown) - 1
             return AlignedSpan(x.sample_rate, ai, bi)
         end
         function IntervalArray(x::AbstractVector{<:AlignedSpan})
             same_sample_rate = all(x) do xᵢ
-                xᵢ.sample_rate == first(x).sample_rate
+                return xᵢ.sample_rate == first(x).sample_rate
             end
             if !same_sample_rate
                 error("AlignedSpan vector must have homogeneous sample rate. Convert to ",
                       "intervals of time to handle heterogenous sample rates.")
             end
-            return IntervalArray{typeof(x), Interval{Nanosecond,Closed,Open}}(x)
+            return IntervalArray{typeof(x),Interval{Nanosecond,Closed,Open}}(x)
         end
     end
 end
@@ -373,7 +373,7 @@ function dfspan(df, spancol)
     if nrow(df) == 0
         return missing
     else
-        return backto(first(df[!, spancol]), 
+        return backto(first(df[!, spancol]),
                       superset(IntervalSet(IntervalArray(df[!, spancol]))))
     end
 end
