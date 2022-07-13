@@ -6,13 +6,13 @@
 [![Docs: Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://beacon-biosignals.github.io/DataFrameIntervals.jl/stable)
 [![Docs: Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://beacon-biosignals.github.io/DataFrameIntervals.jl/dev)
 
-DataFrameIntervals provides two functions that are handy for computing joins over intervals
-of time: `interval_join` and `groupby_interval_join`, and a helper function called `quantile_windows`. See their doc strings for details.
+DataFrameIntervals provides two functions that are handy for computing joins over intervals; usually these are intervals of time. These functions are `interval_join` and `groupby_interval_join`. There is also a helper function called `quantile_windows`. See their doc strings for details (and an example below).
 
-Rows match in this join if their time spans overlap. The time spans can be represented as
+Rows match in this join if their intervals overlap. They can be represented as
 
-- [`TimeSpan`](https://juliapackages.com/p/timespans) objects 
-- [`Interval`](https://juliapackages.com/p/intervals) objects.
+- [`TimeSpan`](https://juliapackages.com/p/timespans)
+- [`Interval`](https://juliapackages.com/p/intervals)
+- [`AlignedSpans`](https://github.com/beacon-biosignals/AlignedSpans.jl)
 - `NamedTuples` with a `start` and `stop` field.
 
 ## Example

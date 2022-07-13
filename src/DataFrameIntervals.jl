@@ -4,7 +4,7 @@ using Intervals, DataFrames, Requires, Dates
 export quantile_windows, interval_join, groupby_interval_join
 
 #####
-##### Support `find_intersection` and `intersect` over `Interval` and `TimeSpan` objects.
+##### Support `find_intersection` over a variety of interval types
 #####
 
 function find_intersections_(x::AbstractVector, y::AbstractVector)
@@ -48,6 +48,29 @@ function __init__()
         end
         function IntervalArray(x::AbstractVector{<:TimeSpan})
             return IntervalArray{typeof(x),Interval{Nanosecond,Closed,Open}}(x)
+        end
+    end
+
+    @require AlignedSpans = "72438786-fd5d-49ef-8843-650acbdfe662" begin
+        using .AlignedSpans
+        # the range 1:N is equal to the interval [1, N+1) when restricted to an integer
+        # domain; using a left closed interval below improves performance of
+        # find_intersections because the output is always a sequences of left closed
+        # intervals; this lets us avoid the logic to compute closed/open endings of
+        # intervals. 
+        interval(x::AlignedSpan) = Interval{Int,Closed,Open}(x.first_index, x.last_index+1)
+        function backto(x::AlignedSpan, x_::Interval{Int,Closed,Open})
+            return AlignedSpan(x.sample_rate, first(x_), last(x_)-1)
+        end
+        function IntervalArray(x::AbstractVector{<:AlignedSpan})
+            same_sample_rate = all(x) do xᵢ
+                xᵢ.sample_rate == first(x).sample_rate
+            end
+            if !same_sample_rate
+                error("AlignedSpan vector must have homogeneous sample rate. Convert to ",
+                      "intervals of time to handle heterogenous sample rates.")
+            end
+            return IntervalArray{typeof(x), Interval{Int,Closed,Open}}(x)
         end
     end
 end

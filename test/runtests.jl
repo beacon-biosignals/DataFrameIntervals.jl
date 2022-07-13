@@ -2,6 +2,7 @@ using DataFrameIntervals
 using Intervals
 using DataFrames
 using TimeSpans
+using AlignedSpans
 using Test
 using Random
 using Dates
@@ -61,6 +62,9 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     df_result_nt = interval_join(df1_nt, quarters; on=:span)
     @test nrow(df_result_nt) == nrow(df_result)
 
+    # test interval joins with aligned spans
+    al_spans = [AlignedSpan(30, )]
+
     # groubpy_interval_join equivalence
     df_combined = combine(groupby_interval_join(df1, quarters, [:quarter, :label];
                                                 on=:span), :x => mean)
@@ -74,7 +78,6 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
         @test gdf1.x == gdf2.x
     end
 
-    # test out various column specifiers
     df_combined = combine(groupby_interval_join(df1, quarters, r"quar|lab"; on=:span),
                           :x => mean)
     df_combined = combine(groupby_interval_join(df1, quarters, Cols(:quarter, r"lab");
