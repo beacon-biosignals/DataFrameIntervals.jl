@@ -54,10 +54,9 @@ function __init__()
     @require AlignedSpans = "72438786-fd5d-49ef-8843-650acbdfe662" begin
         using .AlignedSpans
         # the range 1:N is equal to the interval [1, N+1) when restricted to an integer
-        # domain; using a left closed interval below improves performance of
-        # find_intersections because the output is always a sequences of left closed
-        # intervals; this lets us avoid the logic to compute closed/open endings of
-        # intervals. 
+        # domain; using closed,open interval patterns simplifies intersection computations
+        # (since the intersection of such an interval is always a closed,open interval
+        # itself)
         function interval(x::AlignedSpan)
             a = time_from_index(x.sample_rate, x.first_index)
             b = time_from_index(x.sample_rate, x.last_index + 1)
