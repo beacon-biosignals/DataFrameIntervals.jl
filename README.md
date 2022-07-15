@@ -67,3 +67,10 @@ interval_join(df, quarters, on=:span)
  102 │       4  d      0.188141   TimeSpan(00:08:56.662988067, 00:…  TimeSpan(00:06:51.442142229, 00:…  TimeSpan(00:08:56.662988067, 00:…
  103 │       4  a      0.338053   TimeSpan(00:08:58.445446762, 00:…  TimeSpan(00:06:51.442142229, 00:…  TimeSpan(00:08:58.445446762, 00:…
 ```
+
+## Related Packages
+
+Below is a list of related packages and a brief indication of their differences from `DataFrameIntervals`.
+
+- [TSx](https://github.com/xKDR/TSx.jl) operations on time series data: includes many features DataFrameIntervals does not aim to implement; currently only supports rows indexd by a single point in time, rather than an interval in time
+- [FlexiJoins](https://gitlab.com/aplavin/FlexiJoins.jl) generic join operations, including by interval predictes: the algorithms applied here are more general purpose and are bound by the complexity of these more general puprose data structures (e.g. KD-trees). DataFrameIntervals is (currently) bound by a lower complexity class for its specific use case.
