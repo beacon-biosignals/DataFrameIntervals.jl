@@ -53,18 +53,14 @@ function __init__()
 
     @require AlignedSpans = "72438786-fd5d-49ef-8843-650acbdfe662" begin
         using .AlignedSpans
-        # the range 1:N is equal to the interval [1, N+1) when restricted to an integer
-        # domain; using closed,open interval patterns simplifies intersection computations
-        # (since the intersection of such an interval is always a closed,open interval
-        # itself)
         function interval(x::AlignedSpan)
             a = time_from_index(x.sample_rate, x.first_index)
-            b = time_from_index(x.sample_rate, x.last_index + 1)
-            return Interval{Nanosecond,Closed,Open}(a, b)
+            b = time_from_index(x.sample_rate, x.last_index)
+            return Interval{Nanosecond,Closed,Closed}(a, b)
         end
-        function backto(x::AlignedSpan, x_::Interval{Nanosecond,Closed,Open})
+        function backto(x::AlignedSpan, x_::Interval{Nanosecond,Closed,Closed})
             ai = AlignedSpans.start_index_from_time(x.sample_rate, x_, RoundDown)
-            bi = AlignedSpans.stop_index_from_time(x.sample_rate, x_, RoundDown) - 1
+            bi = AlignedSpans.stop_index_from_time(x.sample_rate, x_, RoundDown)
             return AlignedSpan(x.sample_rate, ai, bi)
         end
         function IntervalArray(x::AbstractVector{<:AlignedSpan})
