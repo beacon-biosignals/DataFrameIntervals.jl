@@ -94,7 +94,7 @@ end
 
 Join two dataframes based on the intervals they represent (denoted by the `on` column);
 these are typically intervals of time. The join includes one row for every pairing of rows
-in `left` and `right` whose intervals overlap (i.e. `!isempty(intersect(left.on,
+in `left` and `right` whose intervals overlap (i.e. `!isdisjoint(left.on,
 right.on))`).
 
 - `on`: The column name to join left and right on. If the column on which left and right
@@ -108,8 +108,8 @@ right.on))`).
   1 for the first duplicate).
 
 - `renamecols`: a Pair specifying how columns of left and right data frames should be
-  renamed in the resulting data frame. Each element of the pair can be a string or a Symbol
-  can be passed in which case it is appended to the original column name; alternatively a
+  renamed in the resulting data frame. Each element of the pair can be a string or a Symbol,
+  in which case it is appended to the original column name; alternatively a
   function can be passed in which case it is applied to each column name, which is passed to
   it as a String. Note that renamecols does not affect any of the `on` columns.
 
