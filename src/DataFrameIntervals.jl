@@ -121,7 +121,10 @@ function interval_join(left, right; makeunique=false, kwds...)
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
     (left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
-    regions = find_intersections_(view(right, :, right_on), view(left, :, left_on))
+    # `isempty` checks will be uncessary in future versions of Intervals.jl
+    # (c.f. https://github.com/invenia/Intervals.jl/pull/201)
+    regions = isempty(right) || isempty(left) ? Int[] :
+              find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
     # perform the join
     left_side, right_side = join_indices(regions, left, right)
@@ -135,6 +138,8 @@ end
 renamer(col, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
 renamer(col, fn) = fn(col)
 function join_indices(regions, left, right)
+    isempty(regions) && return left[1:0, :], right[1:0, :]
+
     ixs = map(enumerate(regions)) do (right_i, left_ixs)
         return (fill(right_i, length(left_ixs)), left_ixs)
     end
