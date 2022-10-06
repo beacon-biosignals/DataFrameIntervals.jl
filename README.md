@@ -15,6 +15,9 @@ Rows match in this join if their time spans overlap. The time spans can be repre
 - [`Interval`](https://juliapackages.com/p/intervals) objects.
 - `NamedTuples` with a `start` and `stop` field.
 
+[This is a workaround](https://github.com/beacon-biosignals/DataFrameIntervals.jl/pull/13) to support additional types, but the long-term goal is to implement support in `Interval`
+that allows for generic support for any interval-like type.
+
 ## Example
 
 ```julia
