@@ -47,13 +47,14 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     df_last_quarter = subset(df_result, :quarter => ByRow(==(4)))[2:end, :]
     @test df_left[ismissing.(df_left.span), :span_left] == df_last_quarter.span_left
 
-    df_no_q4 = select!(dropmissing(df_left, :span), :label, :x, :span_left => :span)[1:(end-1), :]
+    df_no_q4 = select!(dropmissing(df_left, :span), :label, :x, :span_left => :span)[1:(end - 1),
+                                                                                     :]
     df_right = interval_join(df_no_q4, quarters; on=:span, keepright=true)
-    
+
     @test df_right[ismissing.(df_right.span), :span_right] == quarters[4:4, :span]
 
     # test the handling of missing
-    quarter_miss = transform(quarters, :span => (x -> [x[1:(end-1)]; missing]), 
+    quarter_miss = transform(quarters, :span => (x -> [x[1:(end - 1)]; missing]);
                              renamecols=false)
     @test_throws ArgumentError interval_join(df1, quarter_miss; on=:span)
 
