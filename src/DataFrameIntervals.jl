@@ -123,7 +123,7 @@ function interval_join(left, right; makeunique=false, kwds...)
     (left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
     # `isempty` checks will be uncessary in future versions of Intervals.jl
     # (c.f. https://github.com/invenia/Intervals.jl/pull/201)
-    regions = isempty(right) || isempty(left) ? Int[] :
+    regions = isempty(right) || isempty(left) ? Vector{Int}[] :
               find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
     # perform the join
