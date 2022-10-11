@@ -139,6 +139,8 @@ function interval_join(left, right; makeunique=false, keepleft=false, keepright=
         throw(ArgumentError("The `on` contain missing values; consider setting " *
                             "`matchmissing` to `:nomatch`"))
     end
+    # `isempty` checks will be uncessary in future versions of Intervals.jl
+    # (c.f. https://github.com/invenia/Intervals.jl/pull/201)
     regions = isempty(right) || isempty(left) ? Vector{Int}[] :
               find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
