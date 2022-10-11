@@ -154,7 +154,7 @@ end
 renamer(col, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
 renamer(col, fn) = fn(col)
 function join_indices(regions, left, right; keepleft, keepright, makeunique)
-    isempty(regions) && return left[1:0, :], right[1:0, :]
+    isempty(regions) && return vcat(left[1:0, :], right[1:0, :], cols=:union)
     from_both = map(enumerate(regions)) do (right_i, left_ixs)
         return (fill(right_i, length(left_ixs)), left_ixs)
     end
@@ -383,7 +383,7 @@ function dfspan(df, spancol)
     if nrow(df) == 0
         return missing
     else
-        return backto(first(df[!, spancol]), superset(IntervalArray(df[!, spancol])))
+        return backto(first(df[!, spancol]), superset(IntervalSet(IntervalArray(df[!, spancol]))))
     end
 end
 
