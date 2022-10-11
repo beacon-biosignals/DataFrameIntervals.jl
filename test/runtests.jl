@@ -39,6 +39,8 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span),
                                        DataFrameIntervals.interval.(df1.span))
     @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
+    @test names(interval_join(df1, empty(quarters); on=:span)) == names(df_result)
+    @test names(interval_join(empty(df1), quarters; on=:span)) == names(df_result)
 
     # test column renaming
     rename!(quarters, :span => :time_span)
