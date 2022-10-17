@@ -15,8 +15,20 @@ Rows match in this join if their time spans overlap. The time spans can be repre
 - [`Interval`](https://juliapackages.com/p/intervals) objects.
 - `NamedTuples` with a `start` and `stop` field.
 
-[This is a workaround](https://github.com/beacon-biosignals/DataFrameIntervals.jl/pull/13) to support additional types, but the long-term goal is to implement support in `Interval`
-that allows for generic support for any interval-like type.
+There are several options to support additional types, such as AlignedSpans. One option is to add interface methods to support automatic conversions to intervals; see e.g. [#13](https://github.com/beacon-biosignals/DataFrameIntervals.jl/pull/13). Another option is to manually convert to a supported type; this can provide additional control over how the conversion takes place. For example, one can simply convert to `TimeSpan`s:
+```julia
+timespanify = :span => ByRow(TimeSpan) => :span
+interval_join(transform(df1, timespanify), transform(df2, timespanify); on=:span)
+```
+For AlignedSpans, we can convert to integer indices, after checking the sample rates are all equal:
+```julia
+using Compat # for allequal
+if !allequal(Iterators.flatten(((as.sample_rate for as in df1.span), (as.sample_rate for as in df2.span))))
+  throw(ArgumentError("Sampling rates do not all match!"))
+end
+integer_spanify = :span => ByRow(as -> Interval{Int, Closed, Closed}(as.first_index, as.last_index)) => :span
+interval_join(transform(df1, integer_spanify), transform(df2, integer_spanify); on=:span)
+```
 
 ## Example
 
