@@ -136,7 +136,7 @@ function interval_join(left, right; makeunique=false, keepleft=false, keepright=
     right_missing = any(ismissing, view(right, :, right_on))
     left_missing = any(ismissing, view(left, :, left_on))
     if right_missing || left_missing
-        throw(ArgumentError("There are missing values in the "
+        throw(ArgumentError("There are missing values in the " *
                             "$(left_missing ? "left" : "right") table of `interval_join`."))
     end
     # `isempty` checks will be uncessary in future versions of Intervals.jl
