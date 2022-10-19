@@ -129,15 +129,15 @@ right.on))`).
 
 """
 function interval_join(left, right; makeunique=false, keepleft=false, keepright=false,
-                       matchmissing=:error, kwds...)
-    matchmissing ∈ (:error, :nomatch)
+                       kwds...)
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
     (left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
-    if any(ismissing, view(right, :, right_on)) ||
-       any(ismissing, view(left, :, left_on))
-        throw(ArgumentError("The `on` contain missing values; consider setting " *
-                            "`matchmissing` to `:nomatch`"))
+    right_missing = any(ismissing, view(right, :, right_on))
+    left_missing = any(ismissing, view(left, :, left_on))
+    if right_missing || left_missing
+        throw(ArgumentError("There are missing values in the "
+                            "$(left_missing ? "left" : "right") table of `interval_join`."))
     end
     # `isempty` checks will be uncessary in future versions of Intervals.jl
     # (c.f. https://github.com/invenia/Intervals.jl/pull/201)
