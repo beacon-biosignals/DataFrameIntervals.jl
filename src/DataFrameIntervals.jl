@@ -10,7 +10,11 @@ export quantile_windows, interval_join, groupby_interval_join
 function find_intersections_(x::AbstractVector, y::AbstractVector)
     return Intervals.find_intersections(IntervalArray(x), IntervalArray(y))
 end
-intersect_(x, y) = backto(x, intersect(interval(x), interval(y)))
+function intersect_(x, y)
+    ismissing(x) && return missing
+    ismissing(y) && return missing
+    return backto(x, intersect(interval(x), interval(y)))
+end
 
 # IntervalArray is a helper that treats any vector of interval-like objects as an array of
 # `Interval` objects. For now this includes only `TimeSpans` and `NamedTuple` objects with 
@@ -24,15 +28,17 @@ Base.getindex(x::IntervalArray, i) = interval(x.val[i])
 Base.IndexStyle(::Type{<:IntervalArray{A}}) where {A} = IndexStyle(A)
 
 # support for `Interval` vectors
-IntervalArray(x::AbstractVector{<:Interval}) = x
+IntervalArray(x::AbstractVector{<:Union{Missing,Interval}}) = x
 interval(x::Interval) = x
+interval(x::Missing) = missing
 backto(::Interval, x) = x
+backto(::Missing, x) = missing
 
 # support for `NamedTuple` vectors
 const IntervalTuple = Union{NamedTuple{(:start, :stop)},NamedTuple{(:stop, :start)}}
 interval_type(x::Type{<:T}) where {T<:IntervalTuple} = Union{T.parameters[2].parameters...}
 interval_type(x::IntervalTuple) = Union{typeof(x).parameters[2].parameters...}
-function IntervalArray(x::AbstractVector{<:IntervalTuple})
+function IntervalArray(x::AbstractVector{<:Union{Missing,IntervalTuple}})
     return IntervalArray{typeof(x),Interval{interval_type(eltype(x)),Closed,Open}}(x)
 end
 interval(x::IntervalTuple) = Interval{interval_type(x),Closed,Open}(x.start, x.stop)
@@ -47,7 +53,7 @@ function __init__()
         function backto(::TimeSpan, x::Interval{Nanosecond,Closed,Open})
             return TimeSpan(first(x), last(x))
         end
-        function IntervalArray(x::AbstractVector{<:TimeSpan})
+        function IntervalArray(x::AbstractVector{<:Union{Missing,TimeSpan}})
             return IntervalArray{typeof(x),Interval{Nanosecond,Closed,Open}}(x)
         end
     end
@@ -90,18 +96,19 @@ end
 
 """
     interval_join(left, right; on, renamecols=identity => identity, 
-                  renameon=:_left => :_right, makeunique=false)
+                  renameon=:_left => :_right, makeunique=false, keepleft=false,
+                  keepright=false)
 
 Join two dataframes based on the intervals they represent (denoted by the `on` column);
-these are typically intervals of time. The join includes one row for every pairing of rows
-in `left` and `right` whose intervals overlap (i.e. `!isdisjoint(left.on,
+these are typically intervals of time. By default, the join includes one row for every
+pairing of rows in `left` and `right` whose intervals overlap (i.e. `!isdisjoint(left.on,
 right.on))`).
 
 - `on`: The column name to join left and right on. If the column on which left and right
   will be joined have different names, then a left=>right pair can be passed. on is a
   required argument. The value of the on column in the output data frame is the intersection
-  of the left and right interval. `on` can be one of three different types of objects:
-  an `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
+  of the left and right interval. `on` can be one of three different types of objects: an
+  `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
@@ -109,26 +116,36 @@ right.on))`).
 
 - `renamecols`: a Pair specifying how columns of left and right data frames should be
   renamed in the resulting data frame. Each element of the pair can be a string or a Symbol,
-  in which case it is appended to the original column name; alternatively a
-  function can be passed in which case it is applied to each column name, which is passed to
-  it as a String. Note that renamecols does not affect any of the `on` columns.
+  in which case it is appended to the original column name; alternatively a function can be
+  passed in which case it is applied to each column name, which is passed to it as a String.
+  Note that renamecols does not affect any of the `on` columns.
 
 - `renameon`: a Pair specifying how the left and right data frame `on` column is renamed and
    stored in the resulting data frame, following the same format as `renamecols`.
 
+- `keepleft`: if true, keep rows in left that don't match rows in right (ala `leftjoin`)
+
+- `keepright`: if true, keep rows in right that don't match rows in left (ala `rightjoin`)
+
 """
-function interval_join(left, right; makeunique=false, kwds...)
+function interval_join(left, right; makeunique=false, keepleft=false, keepright=false,
+                       kwds...)
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
     (left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
+    right_missing = any(ismissing, view(right, :, right_on))
+    left_missing = any(ismissing, view(left, :, left_on))
+    if right_missing || left_missing
+        throw(ArgumentError("There are missing values in the " *
+                            "$(left_missing ? "left" : "right") table of `interval_join`."))
+    end
     # `isempty` checks will be uncessary in future versions of Intervals.jl
     # (c.f. https://github.com/invenia/Intervals.jl/pull/201)
     regions = isempty(right) || isempty(left) ? Vector{Int}[] :
               find_intersections_(view(right, :, right_on), view(left, :, left_on))
 
     # perform the join
-    left_side, right_side = join_indices(regions, left, right)
-    joined = hcat(right_side, left_side; makeunique)
+    joined = join_indices(regions, left, right; keepleft, keepright, makeunique)
     transform!(joined, [left_on, right_on] => ByRow(intersect_) => joined_on)
     return joined
 end
@@ -137,15 +154,29 @@ function renamer(n, renamecols, on, renameon)
 end
 renamer(col, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
 renamer(col, fn) = fn(col)
-function join_indices(regions, left, right)
-    isempty(regions) && return left[1:0, :], right[1:0, :]
-
-    ixs = map(enumerate(regions)) do (right_i, left_ixs)
+function join_indices(regions, left, right; keepleft=false, keepright=false, makeunique)
+    isempty(regions) && return vcat(left[1:0, :], right[1:0, :]; cols=:union)
+    from_both = map(enumerate(regions)) do (right_i, left_ixs)
         return (fill(right_i, length(left_ixs)), left_ixs)
     end
-    left_side = view(left, mapreduce(last, vcat, ixs), :)
-    right_side = view(right, mapreduce(first, vcat, ixs), :)
-    return left_side, right_side
+
+    from_left = if keepleft
+        setdiff(axes(left, 1), reduce(union, regions))
+    else
+        Int[]
+    end
+
+    from_right = if keepright
+        findall(isempty, regions)
+    else
+        Int[]
+    end
+
+    left_side = view(left, mapreduce(last, vcat, from_both), :)
+    right_side = view(right, mapreduce(first, vcat, from_both), :)
+    joined = hcat(left_side, right_side; makeunique)
+    return reduce(vcat, (joined, view(left, from_left, :), view(right, from_right, :));
+                  cols=:union)
 end
 
 # helpers to handle grouping DataFrames
@@ -255,8 +286,8 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
 
     # a lazy instantiation of the joined dataframe
     return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique,
-                               Symbol(left_index), Symbol(left_on), Symbol(right_on),
-                               Symbol(joined_on))
+                               Symbol(left_index), Symbol(left_on),
+                               Symbol(right_on), Symbol(joined_on))
 end
 
 function Base.iterate(grouped::GroupedIntervalJoin)
@@ -280,8 +311,8 @@ end
 
 function joingroup(right_df, grouped)
     left_df = grouped.left_df
-    left_side, right_side = join_indices(right_df[!, grouped.left_index], left_df, right_df)
-    joined = hcat(right_side, left_side; grouped.makeunique)
+    joined = join_indices(right_df[!, grouped.left_index], left_df, right_df;
+                          grouped.makeunique)
     return transform!(joined,
                       [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
 end
@@ -350,7 +381,8 @@ function dfspan(df, spancol)
     if nrow(df) == 0
         return missing
     else
-        return backto(first(df[!, spancol]), superset(IntervalArray(df[!, spancol])))
+        return backto(first(df[!, spancol]),
+                      superset(IntervalSet(IntervalArray(df[!, spancol]))))
     end
 end
 
