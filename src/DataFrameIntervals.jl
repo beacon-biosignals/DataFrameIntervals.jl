@@ -61,16 +61,46 @@ end
 
 forleft(x) = x
 forright(x) = x
-forleft(x::Pair) = first(x)
-forright(x::Pair) = last(x)
+forleft(x::Pair) = !istransform(x) ? first(x) : x
+forright(x::Pair) = !istransform(x) ? last(x) : x
+
+is_col_selector(::AbstractString) = true
+is_col_selector(::Symbol) = true
+is_col_selector(x::Pair) = istransform(x)
+istransform(x) = false
+function istransform(x::Pair)
+    return (is_col_selector(first(x)) || 
+            (first(x) isa Tuple && all(is_col_selector, first(x)))) && 
+           !is_col_selector(last(x))
+end
+
+is_valid_on(x) = is_col_selector(x)
+is_valid_on(x::Pair) = (is_col_selector(first(x)) && is_col_selector(last(x))) || istransform(x)
+function interval_transformer(x)
+    # TODO: make this a lazy array to avoid making a copy of the data??
+    return first(x) => ByRow(last(x)) => interval_transform_name(first(x))
+end
+interval_transform_name(x) = x
+interval_transform_name(x::Tuple) = Symbol(join(x, "_"))
+
+interval_column_name(x::AbstractString) = x
+interval_column_name(x::Symbol) = x
+interval_column_name(x::Pair) = interval_transform_name(first(x))
 
 function setup_column_names!(left, right; on, renamecols=identity => identity,
                              renameon=:_left => :_right)
-    if !(on isa Union{Symbol,AbstractString,Pair{Symbol,Symbol},
-                      Pair{<:AbstractString,<:AbstractString}})
-        error("Interval joins support only one `on` column; iterables are not allowed.")
+    if !is_valid_on(on)
+        error("Unexpected value for `on` column: $on. Refer to `interval_join` ",
+              "documentation for supported values.")
     end
 
+    if istransform(forleft(on))
+        transform!(left, interval_transformer(forleft(on)))
+    end
+    if istransform(forright(on))
+        transform!(right, interval_transformer(forright(on)))
+    end
+    # TODO: handle column names when transformed
     left_on = renamer(forleft(on), forleft(renameon))
     right_on = renamer(forright(on), forright(renameon))
     joined_on = forleft(on)
@@ -107,8 +137,13 @@ right.on))`).
 - `on`: The column name to join left and right on. If the column on which left and right
   will be joined have different names, then a left=>right pair can be passed. on is a
   required argument. The value of the on column in the output data frame is the intersection
-  of the left and right interval. `on` can be one of three different types of objects: an
-  `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
+  of the left and right interval. The `on` column can be one of three different types of
+  objects: an `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
+  Rather than specifying a column name, one can give a lambda function of column-names, e.g.
+  `(:start, :stop) => TimeSpan`, which would interpret the `:start` and `:stop` columns
+  as arguments to the TimeSpan constructor. This is compatible with the `left=>right` 
+  pairing, but may require parenthesis, e.g. 
+  `((:start, :stop) => TimeSpan) => (:left, :right) => Interval{Closed,Closed}))`.
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
