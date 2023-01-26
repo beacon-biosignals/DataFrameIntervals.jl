@@ -66,7 +66,9 @@ forright(x::Pair) = !istransform(x) ? last(x) : x
 
 is_col_selector(::AbstractString) = true
 is_col_selector(::Symbol) = true
+is_col_selector(x::Tuple) = all(x -> x isa Symbol || x isa AbstractString, x)
 is_col_selector(x::Pair) = istransform(x)
+is_col_selector(x) = false
 istransform(x) = false
 function istransform(x::Pair)
     return (is_col_selector(first(x)) || 
@@ -77,8 +79,12 @@ end
 is_valid_on(x) = is_col_selector(x)
 is_valid_on(x::Pair) = (is_col_selector(first(x)) && is_col_selector(last(x))) || istransform(x)
 function interval_transformer(x)
-    # TODO: make this a lazy array to avoid making a copy of the data??
-    return first(x) => ByRow(last(x)) => interval_transform_name(first(x))
+    cols = if first(x) isa Tuple
+        Cols(first(x)...)
+    else
+        first(x)
+    end
+    return cols => ByRow(last(x)) => interval_transform_name(first(x))
 end
 interval_transform_name(x) = x
 interval_transform_name(x::Tuple) = Symbol(join(x, "_"))
@@ -87,6 +93,7 @@ interval_column_name(x::AbstractString) = x
 interval_column_name(x::Symbol) = x
 interval_column_name(x::Pair) = interval_transform_name(first(x))
 
+using Infiltrator
 function setup_column_names!(left, right; on, renamecols=identity => identity,
                              renameon=:_left => :_right)
     if !is_valid_on(on)
@@ -95,6 +102,7 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
     end
 
     if istransform(forleft(on))
+        @infiltrate
         transform!(left, interval_transformer(forleft(on)))
     end
     if istransform(forright(on))
@@ -143,7 +151,7 @@ right.on))`).
   `(:start, :stop) => TimeSpan`, which would interpret the `:start` and `:stop` columns
   as arguments to the TimeSpan constructor. This is compatible with the `left=>right` 
   pairing, but may require parenthesis, e.g. 
-  `((:start, :stop) => TimeSpan) => (:left, :right) => Interval{Closed,Closed}))`.
+  `((:start, :stop) => TimeSpan) => ((:left, :right) => Interval{Closed,Closed}))`.
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
