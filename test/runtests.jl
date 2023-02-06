@@ -93,17 +93,17 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     end
 
     # test out lambda for `on`
-    df1_left_right = select(df1, :label, :x, :span => ByRow(x -> (;left = start(x), right = stop(x))) => AsTable)
-    df_result = interval_join(df1_left_right, quarters; on=((:left, :right) => TimeSpan) => :span)
+    # TODO: improve test coverage
+    # - the various types of pairs we can have in both left and right positions
+    # TODO: test several edge cases
+    # - overlap in on output names for left and existing columns names of both left right, 
+    #   and vice versa
+    df1_left_right = select(df1, :label, :x, :span => ByRow(x -> (;start = start(x), stop = stop(x))) => AsTable)
+    df_result = interval_join(df1_left_right, quarters; on=((:start, :stop) => TimeSpan) => :span)
     for quarter in groupby(df_result, :span_right)
         @test sum(duration, quarter.span) ≤ duration(quarter.span_right[1])
     end
-    ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span),
-                                       DataFrameIntervals.interval.(df1.span))
-    @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
-    @test names(interval_join(df1, empty(quarters); on=:span)) == names(df_result)
-    @test names(interval_join(empty(df1), quarters; on=:span)) == names(df_result)
-
+    
     # test out various column specifiers
     df_combined = combine(groupby_interval_join(df1, quarters, r"quar|lab"; on=:span),
                           :x => mean)

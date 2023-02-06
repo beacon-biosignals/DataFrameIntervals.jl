@@ -84,14 +84,13 @@ function interval_transformer(x)
     else
         first(x)
     end
-    return cols => ByRow(last(x)) => interval_transform_name(first(x))
+    fn, label = last(x) isa Pair ? last(x) : (last(x), :span)
+    return cols => ByRow(fn) => label
 end
-interval_transform_name(x) = x
-interval_transform_name(x::Tuple) = Symbol(join(x, "_"))
 
 interval_column_name(x::AbstractString) = x
 interval_column_name(x::Symbol) = x
-interval_column_name(x::Pair) = interval_transform_name(first(x))
+interval_column_name(x::Pair) = last(x) isa Pair ? last(last(x)) : :span
 
 using Infiltrator
 function setup_column_names!(left, right; on, renamecols=identity => identity,
@@ -102,7 +101,6 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
     end
 
     if istransform(forleft(on))
-        @infiltrate
         transform!(left, interval_transformer(forleft(on)))
     end
     if istransform(forright(on))
@@ -111,19 +109,19 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
     # TODO: handle column names when transformed
     left_on = renamer(forleft(on), forleft(renameon))
     right_on = renamer(forright(on), forright(renameon))
-    joined_on = forleft(on)
+    joined_on = interval_column_name(forleft(on))
     rename!(left,
             (renamer(n, forleft(renamecols), forleft(on), forleft(renameon))
              for n in names(left))...)
     rename!(right,
             (renamer(n, forright(renamecols), forright(on), forright(renameon))
              for n in names(right))...)
-    if string(left_on) == string(joined_on)
+    if string(left_on) == string(joined_on) && !istransform(forleft(on))
         error("Interval join failed: left dataframe's `on` column has the final name ",
               "`$left_on` which clashes with joined dataframe's `on` column name ",
               "`$joined_on`. Make sure `renameon` is set properly.")
     end
-    if string(right_on) == string(joined_on)
+    if string(right_on) == string(joined_on) && !istransform(forright(on))
         error("Interval join failed: right dataframe's `on` column has the final name ",
               "`$right_on` which clashes with joined dataframe's `on` column name ",
               "`$joined_on`. Make sure `renameon` is set properly.")
@@ -142,16 +140,18 @@ these are typically intervals of time. By default, the join includes one row for
 pairing of rows in `left` and `right` whose intervals overlap (i.e. `!isdisjoint(left.on,
 right.on))`).
 
-- `on`: The column name to join left and right on. If the column on which left and right
-  will be joined have different names, then a left=>right pair can be passed. on is a
-  required argument. The value of the on column in the output data frame is the intersection
-  of the left and right interval. The `on` column can be one of three different types of
-  objects: an `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
-  Rather than specifying a column name, one can give a lambda function of column-names, e.g.
-  `(:start, :stop) => TimeSpan`, which would interpret the `:start` and `:stop` columns
-  as arguments to the TimeSpan constructor. This is compatible with the `left=>right` 
-  pairing, but may require parenthesis, e.g. 
-  `((:start, :stop) => TimeSpan) => ((:left, :right) => Interval{Closed,Closed}))`.
+- `on`: The column name to join left and right on. Can take one of several forms.
+    1. column name: each dataframe should include this column, and the output will also
+      include it.
+    2. left-right column-name pair (`left => right`): the left dataframe will be joined on
+    the column name in `left` and the right on column name in `right`, the result will
+    include the `left` name.
+    3. colmun-lambda-result pairs: (`:col => fn [=> result_col]`) both data frames will
+    transform :col by `fn` resulting in a new column, which is named either `:span` (the
+    default) or the value of `result_col`. `fn` can take one (`:col => fn`) or two (`(:a,
+    :b) => fn`) arguments and should return an `Interval` type.
+    4. a left-right column pair: (`(:col => fn) => right`) some combination of 2 and 3
+    (requires parenthesis to diambiguate).
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
@@ -189,14 +189,15 @@ function interval_join(left, right; makeunique=false, keepleft=false, keepright=
 
     # perform the join
     joined = join_indices(regions, left, right; keepleft, keepright, makeunique)
-    transform!(joined, [left_on, right_on] => ByRow(intersect_) => joined_on)
-    return joined
+    transform!(joined, Symbol.([left_on, right_on]) => ByRow(intersect_) => joined_on)
+    return select!(joined, Not(joined_on), joined_on)
 end
 function renamer(n, renamecols, on, renameon)
     return n == string(on) ? n => renamer(n, renameon) : n => renamer(n, renamecols)
 end
-renamer(col, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
-renamer(col, fn) = fn(col)
+renamer(col::Union{Symbol,AbstractString}, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
+renamer(col::Pair, x) = interval_column_name(col)
+renamer(col::Union{Symbol,AbstractString}, fn) = fn(col)
 function join_indices(regions, left, right; keepleft=false, keepright=false, makeunique)
     isempty(regions) && return vcat(left[1:0, :], right[1:0, :]; cols=:union)
     from_both = map(enumerate(regions)) do (right_i, left_ixs)
