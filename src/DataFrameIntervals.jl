@@ -10,9 +10,10 @@ struct FnVector{T,F,A} <: AbstractVector{T}
     args::A
 end
 Base.size(x::FnVector) = size(x.args[1])
-function lazy(fn::Base.Callable, args::AbstractVector...) 
+function lazy(fn::Base.Callable, args::AbstractVector...)
     sizes = size.(args)
-    all(==(first(sizes)), sizes) || throw(ArgumentError("Vectors must all have the same size."))
+    all(==(first(sizes)), sizes) ||
+        throw(ArgumentError("Vectors must all have the same size."))
     isempty(args) && throw(ArgumentError("Must use non-empty vectors"))
     T = typeof(fn(getindex.(args, 1)...))
     return FnVector{T,typeof(fn),typeof(args)}(fn, args)
@@ -40,7 +41,7 @@ backto(::Missing, x) = missing
 
 # bypass lazy array if we know it is == identity
 lazy(::typeof(interval), x::AbstractVector{<:Interval}) = x
-lazy(::typeof(interval), x::AbstractVector{<:Union{Missing, Interval}}) = x
+lazy(::typeof(interval), x::AbstractVector{<:Union{Missing,Interval}}) = x
 
 # support for `NamedTuple` vectors
 const IntervalTuple = Union{NamedTuple{(:start, :stop)},NamedTuple{(:stop, :start)}}
@@ -73,13 +74,15 @@ is_col_selector(x::Pair) = istransform(x)
 is_col_selector(x) = false
 istransform(x) = false
 function istransform(x::Pair)
-    return (is_col_selector(first(x)) || 
-            (first(x) isa Tuple && all(is_col_selector, first(x)))) && 
+    return (is_col_selector(first(x)) ||
+            (first(x) isa Tuple && all(is_col_selector, first(x)))) &&
            !is_col_selector(last(x))
 end
 
 is_valid_on(x) = is_col_selector(x)
-is_valid_on(x::Pair) = (is_col_selector(first(x)) && is_col_selector(last(x))) || istransform(x)
+function is_valid_on(x::Pair)
+    return (is_col_selector(first(x)) && is_col_selector(last(x))) || istransform(x)
+end
 function interval_transformer(x)
     cols = if first(x) isa Tuple
         Cols(first(x)...)
@@ -96,7 +99,7 @@ end
 
 input_columns(x::AbstractString) = (x,)
 input_columns(x::Symbol) = (x,)
-function input_columns(x::Pair) 
+function input_columns(x::Pair)
     if first(x) isa Tuple
         return first(x)
     else
@@ -105,9 +108,12 @@ function input_columns(x::Pair)
 end
 
 function renamer(n, renamecols, oncols, renameon)
-    return n in string.(oncols) ? n => rename_col(n, renameon) : n => rename_col(n, renamecols)
+    return n in string.(oncols) ? n => rename_col(n, renameon) :
+           n => rename_col(n, renamecols)
 end
-rename_col(col::Union{Symbol,AbstractString}, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
+function rename_col(col::Union{Symbol,AbstractString}, suffix::Union{Symbol,AbstractString})
+    return string(col, suffix)
+end
 rename_col(col::Union{Symbol,AbstractString}, fn) = fn(col)
 
 function setup_column_names!(left, right; on, renamecols=identity => identity,
@@ -131,7 +137,7 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
     else
         forright(on)
     end
-    
+
     left_ins = input_columns(forleft(on))
     right_ins = input_columns(forright(on))
     left_cols = (left_out, left_ins...)
@@ -166,7 +172,8 @@ function setup_column_names!(left, right; on, renamecols=identity => identity,
         ()
     end
 
-    return (; left_on, right_on, joined_on=outcol, removecols = (remove_left..., remove_right...), left, right)
+    return (; left_on, right_on, joined_on=outcol,
+            removecols=(remove_left..., remove_right...), left, right)
 end
 
 """
@@ -328,7 +335,7 @@ struct GroupedIntervalJoin{R,LG,LD,N}
     left_on::Symbol
     right_on::Symbol
     joined_on::Symbol
-    removecols::NTuple{N, Symbol}
+    removecols::NTuple{N,Symbol}
 end
 
 """
@@ -359,7 +366,8 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
     # setup column names
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
-    (left_on, right_on, joined_on, removecols) = setup_column_names!(left, right; on, kwds...)
+    (left_on, right_on, joined_on, removecols) = setup_column_names!(left, right; on,
+                                                                     kwds...)
 
     # compute interval intersections
     left_index = gensym(:__left_index__)
@@ -397,7 +405,8 @@ function joingroup(right_df, grouped)
                           grouped.makeunique)
     df = transform!(joined,
                     [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
-    select!(df, Not(Cols(grouped.joined_on, grouped.removecols...)), grouped.joined_on)
+    return select!(df, Not(Cols(grouped.joined_on, grouped.removecols...)),
+                   grouped.joined_on)
 end
 
 function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...; kwargs...)

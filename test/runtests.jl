@@ -25,12 +25,12 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     @testset "Basic Interval Joins" begin
         @test nrow(quarters) == 4
         @test isapprox(duration(quarters.span[1]), duration(quarters.span[2]);
-                    atol=Nanosecond(1))
+                       atol=Nanosecond(1))
         @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]);
-                    atol=Nanosecond(1))
+                       atol=Nanosecond(1))
         @test isapprox(duration(quarters.span[2]), duration(quarters.span[3]);
-                    atol=Nanosecond(1)) ||
-            duration(quarters.span[4]) ≤ duration(quarters.span[3])
+                       atol=Nanosecond(1)) ||
+              duration(quarters.span[4]) ≤ duration(quarters.span[3])
         @test nrow(quantile_windows(4, subset(df1, :label => ByRow(in('a':'b'))))) == 4
 
         # NOTE: the bulk of the correctness testing for interval intersections
@@ -40,25 +40,25 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
             @test sum(duration, quarter.span) ≤ duration(quarter.span_right[1])
         end
         ixs = Intervals.find_intersections(DataFrameIntervals.interval.(quarters.span),
-                                        DataFrameIntervals.interval.(df1.span))
+                                           DataFrameIntervals.interval.(df1.span))
         @test df_result.span_left == mapreduce(ix -> df1.span[ix], vcat, ixs)
         @test names(interval_join(df1, empty(quarters); on=:span)) == names(df_result)
         @test names(interval_join(empty(df1), quarters; on=:span)) == names(df_result)
 
         # test the handling of missing
         quarter_miss = transform(quarters, :span => (x -> [x[1:(end - 1)]; missing]);
-                                renamecols=false)
+                                 renamecols=false)
         @test_throws ArgumentError interval_join(df1, quarter_miss; on=:span)
     end
 
-    @testset  "Left and right joins" begin
+    @testset "Left and right joins" begin
         # test `keepleft` and `keepright`
         df_left = interval_join(df1, quarters[1:3, :]; on=:span, keepleft=true)
         df_last_quarter = subset(df_result, :quarter => ByRow(==(4)))[2:end, :]
         @test df_left[ismissing.(df_left.span), :span_left] == df_last_quarter.span_left
 
         df_no_q4 = select!(dropmissing(df_left, :span), :label, :x, :span_left => :span)[1:(end - 1),
-                                                                                        :]
+                                                                                         :]
         df_right = interval_join(df_no_q4, quarters; on=:span, keepright=true)
 
         @test df_right[ismissing.(df_right.span), :span_right] == quarters[4:4, :span]
@@ -68,17 +68,17 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
         # test column renaming
         rename!(quarters, :span => :time_span)
         df_result2 = interval_join(df1, quarters; on=:span => :time_span,
-                                renameon=:_a => :_b,
-                                renamecols=:_left => :_right)
+                                   renameon=:_a => :_b,
+                                   renamecols=:_left => :_right)
         rename!(quarters, :time_span => :span)
         @test issetequal(names(df_result2),
-                        ["time_span_b", "quarter_right", "label_left", "x_left", "span_a",
-                        "span"])
+                         ["time_span_b", "quarter_right", "label_left", "x_left", "span_a",
+                          "span"])
         quarters_2 = insertcols!(copy(quarters), :label => rand('y':'z', 4))
         df_result3 = interval_join(df1, quarters_2; on=:span, makeunique=true)
         @test issetequal(names(df_result3),
-                        ["span_right", "quarter", "label", "label_1", "x",
-                        "span_left", "span"])
+                         ["span_right", "quarter", "label", "label_1", "x",
+                          "span_left", "span"])
     end
 
     @testset "NamedTuples" begin
@@ -90,17 +90,22 @@ Base.isapprox(a::TimePeriod, b::TimePeriod; atol=period) = return abs(a - b) ≤
     end
 
     @testset "Join over multiple columns" begin
-        df1_left_right = select(df1, :label, :x, :span => ByRow(x -> (;start = start(x), stop = stop(x))) => AsTable)
-        df_result = interval_join(df1_left_right, quarters; on=((:start, :stop) => TimeSpan) => :span)
+        df1_left_right = select(df1, :label, :x,
+                                :span => ByRow(x -> (; start=start(x), stop=stop(x))) => AsTable)
+        df_result = interval_join(df1_left_right, quarters;
+                                  on=((:start, :stop) => TimeSpan) => :span)
         for quarter in groupby(df_result, :span_right)
             @test sum(duration, quarter.span) ≤ duration(quarter.span_right[1])
         end
 
-        quarters_lr = select(quarters, :quarter, :span => ByRow(x -> (;start = start(x), stop = stop(x))) => AsTable)
-        df_result_ = interval_join(df1_left_right, quarters_lr; on=(:start, :stop) => TimeSpan)
+        quarters_lr = select(quarters, :quarter,
+                             :span => ByRow(x -> (; start=start(x), stop=stop(x))) => AsTable)
+        df_result_ = interval_join(df1_left_right, quarters_lr;
+                                   on=(:start, :stop) => TimeSpan)
         @test nrow(df_result_) == nrow(df_result)
 
-        df_result_ = interval_join(df1, quarters_lr; on=:span => ((:start, :stop) => TimeSpan))
+        df_result_ = interval_join(df1, quarters_lr;
+                                   on=:span => ((:start, :stop) => TimeSpan))
         @test nrow(df_result_) == nrow(df_result)
     end
 
