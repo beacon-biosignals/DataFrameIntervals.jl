@@ -10,6 +10,7 @@ Intervals = "d8418881-c3e1-53bb-8760-2df7ec849ed5"
 Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 
 [compat]
+Aqua = "0.6"
 DataFrames = "1"
 Intervals = "1.8"
 Requires = "1"
