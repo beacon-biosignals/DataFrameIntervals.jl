@@ -3,12 +3,29 @@ module DataFrameIntervals
 using Intervals, DataFrames, Requires, Dates
 export quantile_windows, interval_join, groupby_interval_join
 
+# represents a lazy application of fn.(vec1, vec2, ...), useful in cases where
+# fn is cheap and we don't mind recomputing it for each call to `getindex`
+struct FnVector{T,F,A} <: AbstractVector{T}
+    fn::F
+    args::A
+end
+Base.size(x::FnVector) = size(x.args[1])
+function lazy(fn::Base.Callable, args::AbstractVector...)
+    sizes = size.(args)
+    all(==(first(sizes)), sizes) ||
+        throw(ArgumentError("Vectors must all have the same size."))
+    isempty(args) && throw(ArgumentError("Must use non-empty vectors"))
+    T = typeof(fn(getindex.(args, 1)...))
+    return FnVector{T,typeof(fn),typeof(args)}(fn, args)
+end
+Base.@propagate_inbounds Base.getindex(x::FnVector, i::Int) = x.fn(getindex.(x.args, i)...)
+
 #####
 ##### Support `find_intersection` and `intersect` over `Interval` and `TimeSpan` objects.
 #####
 
 function find_intersections_(x::AbstractVector, y::AbstractVector)
-    return Intervals.find_intersections(IntervalArray(x), IntervalArray(y))
+    return Intervals.find_intersections(lazy(interval, x), lazy(interval, y))
 end
 function intersect_(x, y)
     ismissing(x) && return missing
@@ -16,31 +33,20 @@ function intersect_(x, y)
     return backto(x, intersect(interval(x), interval(y)))
 end
 
-# IntervalArray is a helper that treats any vector of interval-like objects as an array of
-# `Interval` objects. For now this includes only `TimeSpans` and `NamedTuple` objects with 
-# a `start` and `stop` field
-struct IntervalArray{A,I} <: AbstractVector{I}
-    val::A
-end
-Base.size(x::IntervalArray) = size(x.val)
-Base.getindex(x::IntervalArray, i) = interval(x.val[i])
-# see https://github.com/beacon-biosignals/DataFrameIntervals.jl/issues/10
-Base.IndexStyle(::Type{<:IntervalArray{A}}) where {A} = IndexStyle(A)
-
 # support for `Interval` vectors
-IntervalArray(x::AbstractVector{<:Union{Missing,Interval}}) = x
 interval(x::Interval) = x
 interval(x::Missing) = missing
 backto(::Interval, x) = x
 backto(::Missing, x) = missing
 
+# bypass lazy array if we know it is == identity
+lazy(::typeof(interval), x::AbstractVector{<:Interval}) = x
+lazy(::typeof(interval), x::AbstractVector{<:Union{Missing,Interval}}) = x
+
 # support for `NamedTuple` vectors
 const IntervalTuple = Union{NamedTuple{(:start, :stop)},NamedTuple{(:stop, :start)}}
 interval_type(x::Type{<:T}) where {T<:IntervalTuple} = Union{T.parameters[2].parameters...}
 interval_type(x::IntervalTuple) = Union{typeof(x).parameters[2].parameters...}
-function IntervalArray(x::AbstractVector{<:Union{Missing,IntervalTuple}})
-    return IntervalArray{typeof(x),Interval{interval_type(eltype(x)),Closed,Open}}(x)
-end
 interval(x::IntervalTuple) = Interval{interval_type(x),Closed,Open}(x.start, x.stop)
 backto(::NamedTuple{(:start, :stop)}, x::Interval) = (; start=first(x), stop=last(x))
 backto(::NamedTuple{(:stop, :start)}, x::Interval) = (; stop=last(x), start=first(x))
@@ -53,62 +59,144 @@ function __init__()
         function backto(::TimeSpan, x::Interval{Nanosecond,Closed,Open})
             return TimeSpan(first(x), last(x))
         end
-        function IntervalArray(x::AbstractVector{<:Union{Missing,TimeSpan}})
-            return IntervalArray{typeof(x),Interval{Nanosecond,Closed,Open}}(x)
-        end
     end
 end
 
 forleft(x) = x
 forright(x) = x
-forleft(x::Pair) = first(x)
-forright(x::Pair) = last(x)
+forleft(x::Pair) = !istransform(x) ? first(x) : x
+forright(x::Pair) = !istransform(x) ? last(x) : x
+
+is_col_selector(::AbstractString) = true
+is_col_selector(::Symbol) = true
+is_col_selector(x::Tuple) = all(x -> x isa Symbol || x isa AbstractString, x)
+is_col_selector(x::Pair) = istransform(x)
+is_col_selector(x) = false
+istransform(x) = false
+function istransform(x::Pair)
+    return (is_col_selector(first(x)) ||
+            (first(x) isa Tuple && all(is_col_selector, first(x)))) &&
+           !is_col_selector(last(x))
+end
+
+is_valid_on(x) = is_col_selector(x)
+function is_valid_on(x::Pair)
+    return (is_col_selector(first(x)) && is_col_selector(last(x))) || istransform(x)
+end
+function interval_transformer(x)
+    cols = if first(x) isa Tuple
+        Cols(first(x)...)
+    else
+        first(x)
+    end
+    fn, label = last(x), Symbol(gensym("span"))
+    if first(x) isa Tuple
+        return cols => ((args...) -> lazy(fn, args...)) => label
+    else
+        return cols => (a -> lazy(fn, a)) => label
+    end
+end
+
+input_columns(x::AbstractString) = (x,)
+input_columns(x::Symbol) = (x,)
+function input_columns(x::Pair)
+    if first(x) isa Tuple
+        return first(x)
+    else
+        return (x,)
+    end
+end
+
+function renamer(n, renamecols, oncols, renameon)
+    return n in string.(oncols) ? n => rename_col(n, renameon) :
+           n => rename_col(n, renamecols)
+end
+function rename_col(col::Union{Symbol,AbstractString}, suffix::Union{Symbol,AbstractString})
+    return string(col, suffix)
+end
+rename_col(col::Union{Symbol,AbstractString}, fn) = fn(col)
 
 function setup_column_names!(left, right; on, renamecols=identity => identity,
-                             renameon=:_left => :_right)
-    if !(on isa Union{Symbol,AbstractString,Pair{Symbol,Symbol},
-                      Pair{<:AbstractString,<:AbstractString}})
-        error("Interval joins support only one `on` column; iterables are not allowed.")
+                             renameon=:_left => :_right, outcol=:span)
+    if !is_valid_on(on)
+        error("Unexpected value for `on` column: $on. Refer to `interval_join` ",
+              "documentation for supported values.")
     end
 
-    left_on = renamer(forleft(on), forleft(renameon))
-    right_on = renamer(forright(on), forright(renameon))
-    joined_on = forleft(on)
+    left_out = if istransform(forleft(on))
+        trans = interval_transformer(forleft(on))
+        transform!(left, trans)
+        last(last(trans))
+    else
+        forleft(on)
+    end
+    right_out = if istransform(forright(on))
+        trans = interval_transformer(forright(on))
+        transform!(right, trans)
+        last(last(trans))
+    else
+        forright(on)
+    end
+
+    left_ins = input_columns(forleft(on))
+    right_ins = input_columns(forright(on))
+    left_cols = (left_out, left_ins...)
+    right_cols = (right_out, right_ins...)
+    (left_on, left_in_rename...) = rename_col.(left_cols, Ref(forleft(renameon)))
+    (right_on, right_in_rename...) = rename_col.(right_cols, Ref(forright(renameon)))
     rename!(left,
-            (renamer(n, forleft(renamecols), forleft(on), forleft(renameon))
+            (renamer(n, forleft(renamecols), left_cols, forleft(renameon))
              for n in names(left))...)
     rename!(right,
-            (renamer(n, forright(renamecols), forright(on), forright(renameon))
+            (renamer(n, forright(renamecols), right_cols, forright(renameon))
              for n in names(right))...)
-    if string(left_on) == string(joined_on)
-        error("Interval join failed: left dataframe's `on` column has the final name ",
-              "`$left_on` which clashes with joined dataframe's `on` column name ",
-              "`$joined_on`. Make sure `renameon` is set properly.")
+
+    if any(l -> string(l) == string(outcol), left_in_rename)
+        error("Interval join failed: left dataframe's `on` column(s) has the final name(s) ",
+              "`$(join(left_ins, ", ", " and "))` which clashes with joined dataframe's `on` column name ",
+              "`$outcol`. Make sure `renameon` is set properly.")
     end
-    if string(right_on) == string(joined_on)
-        error("Interval join failed: right dataframe's `on` column has the final name ",
-              "`$right_on` which clashes with joined dataframe's `on` column name ",
-              "`$joined_on`. Make sure `renameon` is set properly.")
+    if any(r -> string(r) == string(outcol), right_in_rename)
+        error("Interval join failed: right dataframe's `on` column(s) has the final name(s) ",
+              "`$(join(right_ins, ", ", " and "))` which clashes with joined dataframe's `on` column name ",
+              "`$outcol`. Make sure `renameon` is set properly.")
+    end
+    remove_left = if left_on != first(left_in_rename)
+        (left_on,)
+    else
+        ()
+    end
+    remove_right = if right_on != first(right_in_rename)
+        (right_on,)
+    else
+        ()
     end
 
-    return (; left_on, right_on, joined_on, left, right)
+    return (; left_on, right_on, joined_on=outcol,
+            removecols=(remove_left..., remove_right...), left, right)
 end
 
 """
     interval_join(left, right; on, renamecols=identity => identity, 
                   renameon=:_left => :_right, makeunique=false, keepleft=false,
-                  keepright=false)
+                  keepright=false, outcol=:span)
 
 Join two dataframes based on the intervals they represent (denoted by the `on` column);
 these are typically intervals of time. By default, the join includes one row for every
 pairing of rows in `left` and `right` whose intervals overlap (i.e. `!isdisjoint(left.on,
 right.on))`).
 
-- `on`: The column name to join left and right on. If the column on which left and right
-  will be joined have different names, then a left=>right pair can be passed. on is a
-  required argument. The value of the on column in the output data frame is the intersection
-  of the left and right interval. `on` can be one of three different types of objects: an
-  `Interval`, a `TimeSpan` or a `NamedTuple` with a `start` and a `stop` field.
+- `on`: The column name(s) to join left and right on. Can take one of several forms.
+    1. column name: each dataframe should include this column, and the output will also
+      include it. It should be an `Interval`, `TimeSpan` or `NamedTuple`.
+    2. left-right column-name pair (`left => right`): the left dataframe will be joined on
+    the column name in `left` and the right on column name in `right`, the result will
+    include the `left` name.
+    3. colmun-lambda-result pairs: (`(:col, ...) => fn`) both data frames will transform the
+    given columns by `fn`. It should take as many positional arguments as their are columns
+    and should return an `Interval`, `TimeSpan` or `NamedTuple` type. 
+    4. a left-right column pair: (`(:col => fn) => right`) some combination of 2 and 3
+    (requires parenthesis to diambiguate). 
 
 - `makeunique`: if false (the default), an error will be raised if duplicate names are found
   in columns not joined on; if true, duplicate names will be suffixed with _i (i starting at
@@ -120,19 +208,23 @@ right.on))`).
   passed in which case it is applied to each column name, which is passed to it as a String.
   Note that renamecols does not affect any of the `on` columns.
 
-- `renameon`: a Pair specifying how the left and right data frame `on` column is renamed and
-   stored in the resulting data frame, following the same format as `renamecols`.
+- `renameon`: a Pair specifying how the left and right data frame `on` column(s) is (are)
+   renamed and stored in the resulting data frame, following the same format as
+   `renamecols`.
 
 - `keepleft`: if true, keep rows in left that don't match rows in right (ala `leftjoin`)
 
 - `keepright`: if true, keep rows in right that don't match rows in left (ala `rightjoin`)
+
+- `outcol`: the name of the column that reports the intersection between the left
+  and right interval
 
 """
 function interval_join(left, right; makeunique=false, keepleft=false, keepright=false,
                        kwds...)
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
-    (left_on, right_on, joined_on) = setup_column_names!(left, right; kwds...)
+    (left_on, right_on, joined_on, removecols) = setup_column_names!(left, right; kwds...)
     right_missing = any(ismissing, view(right, :, right_on))
     left_missing = any(ismissing, view(left, :, left_on))
     if right_missing || left_missing
@@ -146,14 +238,10 @@ function interval_join(left, right; makeunique=false, keepleft=false, keepright=
 
     # perform the join
     joined = join_indices(regions, left, right; keepleft, keepright, makeunique)
-    transform!(joined, [left_on, right_on] => ByRow(intersect_) => joined_on)
-    return joined
+    transform!(joined, Symbol.([left_on, right_on]) => ByRow(intersect_) => joined_on)
+    return select!(joined, Not(Cols(joined_on, removecols...)), joined_on)
 end
-function renamer(n, renamecols, on, renameon)
-    return n == string(on) ? n => renamer(n, renameon) : n => renamer(n, renamecols)
-end
-renamer(col, suffix::Union{Symbol,AbstractString}) = string(col, suffix)
-renamer(col, fn) = fn(col)
+
 function join_indices(regions, left, right; keepleft=false, keepright=false, makeunique)
     isempty(regions) && return vcat(left[1:0, :], right[1:0, :]; cols=:union)
     from_both = map(enumerate(regions)) do (right_i, left_ixs)
@@ -238,7 +326,7 @@ find_valid(on, df, cols) = mapreduce(c -> find_valid(on, df, c), vcat, cols)
 
 # helper for `split_into_combine`
 
-struct GroupedIntervalJoin{R,LG,LD}
+struct GroupedIntervalJoin{R,LG,LD,N}
     right_grouped::R
     left_groups::LG
     left_df::LD
@@ -247,11 +335,12 @@ struct GroupedIntervalJoin{R,LG,LD}
     left_on::Symbol
     right_on::Symbol
     joined_on::Symbol
+    removecols::NTuple{N,Symbol}
 end
 
 """
     groupby_interval_join(left, right, groups; on, renamecols=identity => identity, 
-                          renameon=:_left => :_right, makeunique=false)
+                          renameon=:_left => :_right, makeunique=false, outcol=:span)
 
     Similar to, but less resource intensive than 
 `groupby(interval_join(left, right), groups)`. You can iterate over the groups or call
@@ -277,7 +366,8 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
     # setup column names
     left = DataFrame(left; copycols=false)
     right = DataFrame(right; copycols=false)
-    (left_on, right_on, joined_on) = setup_column_names!(left, right; on, kwds...)
+    (left_on, right_on, joined_on, removecols) = setup_column_names!(left, right; on,
+                                                                     kwds...)
 
     # compute interval intersections
     left_index = gensym(:__left_index__)
@@ -287,7 +377,7 @@ function groupby_interval_join(left, right, groups; on, makeunique=false, kwds..
     # a lazy instantiation of the joined dataframe
     return GroupedIntervalJoin(groupby(right, right_cols), left_cols, left, makeunique,
                                Symbol(left_index), Symbol(left_on),
-                               Symbol(right_on), Symbol(joined_on))
+                               Symbol(right_on), Symbol(joined_on), Symbol.(removecols))
 end
 
 function Base.iterate(grouped::GroupedIntervalJoin)
@@ -313,8 +403,10 @@ function joingroup(right_df, grouped)
     left_df = grouped.left_df
     joined = join_indices(right_df[!, grouped.left_index], left_df, right_df;
                           grouped.makeunique)
-    return transform!(joined,
-                      [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
+    df = transform!(joined,
+                    [grouped.left_on, grouped.right_on] => ByRow(intersect_) => grouped.joined_on)
+    return select!(df, Not(Cols(grouped.joined_on, grouped.removecols...)),
+                   grouped.joined_on)
 end
 
 function DataFrames.combine(grouped::GroupedIntervalJoin, pairs...; kwargs...)
@@ -382,7 +474,7 @@ function dfspan(df, spancol)
         return missing
     else
         return backto(first(df[!, spancol]),
-                      superset(IntervalSet(IntervalArray(df[!, spancol]))))
+                      superset(IntervalSet(lazy(interval, df[!, spancol]))))
     end
 end
 
