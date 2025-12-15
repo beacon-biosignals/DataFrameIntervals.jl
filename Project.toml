@@ -1,7 +1,7 @@
 name = "DataFrameIntervals"
 uuid = "33b79e07-adbe-4034-b8be-6bacde625d75"
 authors = ["Beacon Biosignals, Inc."]
-version = "0.2.0"
+version = "0.3.0"
 
 [deps]
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -12,7 +12,7 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 [compat]
 Aqua = "0.6"
 DataFrames = "1"
-Intervals = "1.8"
+Intervals = "1.10"
 Requires = "1"
 julia = "1.6"
 
