@@ -22,7 +22,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
       - name: Cache
-        uses: julia-actions/cache@v2
+        uses: julia-actions/cache@v3
       - name: Build
         uses: julia-actions/julia-buildpkg@v1
       - name: Deploy
